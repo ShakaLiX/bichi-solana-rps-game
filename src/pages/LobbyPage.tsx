@@ -15,7 +15,7 @@ const LobbyPage = () => {
     const checkSupabaseConnection = async () => {
       try {
         // Check if Supabase URL and key are configured
-        if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+        if (!supabaseUrl || !supabaseAnonKey) {
           console.error('Supabase environment variables are missing');
           toast({
             title: "Configuration Error",
@@ -72,12 +72,7 @@ const LobbyPage = () => {
           {!isSupabaseConnected && (
             <div className="mt-4 p-4 bg-yellow-100 border border-yellow-300 rounded-md text-yellow-800">
               <h3 className="font-bold">Supabase Not Connected</h3>
-              <p>This app requires Supabase to be properly configured. Please set the following environment variables:</p>
-              <ul className="list-disc list-inside mt-2">
-                <li>VITE_SUPABASE_URL</li>
-                <li>VITE_SUPABASE_ANON_KEY</li>
-              </ul>
-              <p className="mt-2">Without these, game creation and joining will not work properly.</p>
+              <p>This app requires Supabase to be properly configured. Please check your connection settings.</p>
             </div>
           )}
         </div>
