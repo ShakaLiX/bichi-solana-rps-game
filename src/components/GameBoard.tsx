@@ -12,7 +12,13 @@ import { useWallet } from "@solana/wallet-adapter-react";
 const GameBoard = () => {
   const { toast } = useToast();
   const { connected } = useWallet();
-  const { gameState, selectMove, commitMove, isLoading } = useGameContext();
+  const { 
+    gameState, 
+    selectMove, 
+    commitMove, 
+    isLoading, 
+    resetRoundTimer 
+  } = useGameContext();
   
   // Check if wallet is connected
   useEffect(() => {
@@ -33,6 +39,14 @@ const GameBoard = () => {
   const handleCommitMove = async () => {
     if (!gameState.playerMove || gameState.playerCommitted || gameState.gameOver) return;
     await commitMove();
+  };
+
+  const handleTimerComplete = () => {
+    console.log("TIMEOUT: Timer completed, auto-selecting rock");
+    if (!gameState.playerCommitted && !gameState.gameOver) {
+      handleSelectMove("rock");
+      handleCommitMove();
+    }
   };
   
   return (
@@ -97,7 +111,10 @@ const GameBoard = () => {
         <div className="flex flex-col items-center justify-between">
           <div className="flex flex-col items-center justify-center mt-4">
             {!gameState.gameOver && !gameState.roundResult && (
-              <Timer seconds={30} onComplete={gameState.playerCommitted ? undefined : () => handleSelectMove("rock")} />
+              <Timer 
+                seconds={30} 
+                onComplete={handleTimerComplete} 
+              />
             )}
             
             <div className="text-3xl font-bold text-bichi-brown mt-4">VS</div>

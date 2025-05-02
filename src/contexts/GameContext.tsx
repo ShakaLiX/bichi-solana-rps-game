@@ -1,11 +1,19 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { useToast } from "@/hooks/use-toast";
-import supabase from "@/lib/supabase";
+import supabase, { 
+  GameRecord,
+  subscribeToGame,
+  recordMove,
+  updateRoundAndResult,
+  updateGameState
+} from "@/lib/supabase";
 import { shortenAddress, createTransferTransaction, ESCROW_PUBKEY } from '@/lib/solana';
+import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 type MoveType = "rock" | "paper" | "scissors" | null;
 
@@ -25,6 +33,7 @@ interface GameState {
   roundResult: "win" | "lose" | "tie" | null;
   gameOver: boolean;
   winner: string | null;
+  shouldResetTimer: boolean;
 }
 
 interface GameContextType {
@@ -33,6 +42,7 @@ interface GameContextType {
   commitMove: () => Promise<void>;
   resetGame: () => void;
   isLoading: boolean;
+  resetRoundTimer: () => void;
 }
 
 const defaultGameState: GameState = {
@@ -51,6 +61,7 @@ const defaultGameState: GameState = {
   roundResult: null,
   gameOver: false,
   winner: null,
+  shouldResetTimer: false,
 };
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -77,6 +88,53 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       opponentMove: MoveType;
     }
   }>({});
+  const supabaseSubscription = useRef<any>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Reset round timer flag
+  const resetRoundTimer = useCallback(() => {
+    console.log('Round timer reset requested');
+    setGameState(prev => ({
+      ...prev,
+      shouldResetTimer: !prev.shouldResetTimer // Toggle to trigger effect
+    }));
+  }, []);
+
+  // Setup timeout for moves
+  useEffect(() => {
+    if (!gameState.id || gameState.playerCommitted || gameState.gameOver) {
+      // Clear any existing timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      return;
+    }
+
+    // Set a timeout for auto-move
+    console.log('Setting up timeout for auto-move');
+    timeoutRef.current = setTimeout(() => {
+      console.log('TIMEOUT: Auto-selecting move due to timeout');
+      // Auto-select rock if player hasn't moved
+      if (!gameState.playerCommitted) {
+        // Auto select rock
+        selectMove("rock");
+        commitMove();
+        toast({
+          title: "Time's up!",
+          description: "Rock was automatically selected",
+          variant: "destructive"
+        });
+      }
+    }, 30000); // 30 seconds timeout
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [gameState.round, gameState.playerCommitted, gameState.gameOver, gameState.id]);
 
   // Load game data from Supabase
   useEffect(() => {
@@ -134,10 +192,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           opponentPubkey,
           isCreator,
           stake: data.stake_amount,
+          round: data.current_round || 1,
+          playerMove: isCreator ? data.player1_move as MoveType : data.player2_move as MoveType,
+          opponentMove: isCreator ? data.player2_move as MoveType : data.player1_move as MoveType,
+          playerCommitted: isCreator ? !!data.player1_move : !!data.player2_move,
+          opponentCommitted: isCreator ? !!data.player2_move : !!data.player1_move,
         }));
         
-        // Subscribe to game moves
-        subscribeToMoves();
+        // Subscribe to game updates
+        subscribeToGameUpdates(gameId);
         
       } catch (err) {
         console.error('Exception fetching game data:', err);
@@ -151,53 +214,83 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     fetchGameData();
+
+    return () => {
+      // Clean up subscription on unmount
+      if (supabaseSubscription.current) {
+        supabaseSubscription.current.unsubscribe();
+      }
+    };
   }, [gameId, publicKey, navigate, toast]);
 
-  // Subscribe to game moves using Supabase Realtime
-  const subscribeToMoves = () => {
-    if (!gameId) return;
+  // Subscribe to game updates using Supabase Realtime
+  const subscribeToGameUpdates = (gameId: string) => {
+    console.log('Setting up realtime subscription for game updates');
     
-    console.log('Setting up realtime subscription for game moves');
-    
-    // Create a channel for this specific game
-    const channel = supabase
-      .channel(`game_moves_${gameId}`)
-      .on('broadcast', { event: 'game_move' }, (payload) => {
-        console.log('Received game move broadcast:', payload);
+    supabaseSubscription.current = subscribeToGame(gameId, (payload) => {
+      if (!payload.new) return;
+
+      const gameData = payload.new;
+      const isCreator = gameState.isCreator;
+      
+      console.log('Game update received:', gameData);
+
+      // Update local state based on database changes
+      setGameState(prev => {
+        // Extract player and opponent moves based on creator status
+        const playerMove = isCreator ? gameData.player1_move as MoveType : gameData.player2_move as MoveType;
+        const opponentMove = isCreator ? gameData.player2_move as MoveType : gameData.player1_move as MoveType;
+        const playerCommitted = isCreator ? !!gameData.player1_move : !!gameData.player2_move;
+        const opponentCommitted = isCreator ? !!gameData.player2_move : !!gameData.player1_move;
         
-        const { round, move, wallet } = payload.payload;
-        const isOpponentMove = wallet !== gameState.playerPubkey;
-        
-        if (isOpponentMove) {
-          console.log('Opponent made a move:', move);
-          // Set opponent move
-          setGameState(prev => ({
-            ...prev,
-            opponentMove: move as MoveType,
-            opponentCommitted: true
-          }));
-          
-          // Check if both players have committed moves
-          if (gameState.playerCommitted) {
-            // Evaluate round result after a short delay
-            setTimeout(() => evaluateRound(gameState.playerMove, move as MoveType), 1000);
+        // Detect round change
+        const roundChanged = gameData.current_round !== prev.round;
+        if (roundChanged) {
+          console.log('ROUND RESET: Moving to round', gameData.current_round);
+          // Reset timer on round change
+          if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
           }
         }
-      })
-      .on('broadcast', { event: 'game_over' }, (payload) => {
-        console.log('Received game over broadcast:', payload);
-        handleGameOver(payload.payload.winner);
-      })
-      .subscribe();
-    
-    return () => {
-      channel.unsubscribe();
-    };
+
+        // Both players have committed moves, check for result
+        const bothCommitted = playerCommitted && opponentCommitted;
+        
+        // Check for a draw
+        const isDraw = bothCommitted && playerMove === opponentMove;
+        if (isDraw) {
+          console.log('DRAW DETECTED: Both players chose', playerMove);
+          toast({
+            title: "It's a draw!",
+            description: `Both players chose ${playerMove}. Next round starting...`,
+            duration: 3000,
+          });
+        }
+
+        return {
+          ...prev,
+          round: gameData.current_round || prev.round,
+          playerMove,
+          opponentMove,
+          playerCommitted,
+          opponentCommitted,
+          roundResult: gameData.round_result as "win" | "lose" | "tie" | null || prev.roundResult,
+          shouldResetTimer: roundChanged || (isDraw !== prev.roundResult === "tie")
+        };
+      });
+      
+      // Handle game completion
+      if (gameData.status === 'completed') {
+        console.log('Game completed, winner:', gameData.round_result);
+        handleGameOver(gameData.round_result || null);
+      }
+    });
   };
 
   // Select a move
   const selectMove = (move: MoveType) => {
-    if (!gameState.playerCommitted) {
+    if (!gameState.playerCommitted && !gameState.gameOver) {
       setGameState(prev => ({
         ...prev,
         playerMove: move
@@ -205,35 +298,28 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Commit move and broadcast to opponent
+  // Commit move and update database
   const commitMove = async () => {
-    if (!gameState.playerMove || gameState.playerCommitted || !gameState.id || !gameState.playerPubkey) return;
+    if (!gameState.playerMove || gameState.playerCommitted || gameState.gameOver || !gameState.id || !gameState.playerPubkey) return;
     
     setIsLoading(true);
     
     try {
       console.log('Committing move:', gameState.playerMove);
+
+      // Record move in database
+      const success = await recordMove(
+        gameState.id,
+        gameState.playerPubkey,
+        gameState.playerMove,
+        gameState.isCreator
+      );
       
-      // Broadcast move to opponent
-      const response = await supabase
-        .channel(`game_moves_${gameState.id}`)
-        .send({
-          type: 'broadcast',
-          event: 'game_move',
-          payload: {
-            round: gameState.round,
-            move: gameState.playerMove,
-            wallet: gameState.playerPubkey
-          }
-        });
-      
-      // Check if response was successful
-      if (response === 'error') {
-        console.error('Error broadcasting move');
-        throw new Error('Failed to send your move');
+      if (!success) {
+        throw new Error('Failed to record your move');
       }
       
-      // Update player committed state
+      // Update local state
       setGameState(prev => ({
         ...prev,
         playerCommitted: true
@@ -244,10 +330,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         description: "Waiting for your opponent to make a move...",
       });
       
-      // Check if opponent has already committed
-      if (gameState.opponentCommitted) {
-        // Evaluate round result after a short delay
-        setTimeout(() => evaluateRound(gameState.playerMove, gameState.opponentMove!), 1000);
+      // Clear any timeout - player has moved
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
       
     } catch (error) {
@@ -262,9 +348,33 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Check if both players have committed moves and evaluate round
+  useEffect(() => {
+    const evaluateRoundIfNeeded = async () => {
+      // Only the creator evaluates round results to avoid race conditions
+      if (!gameState.isCreator || 
+          !gameState.id || 
+          !gameState.playerCommitted || 
+          !gameState.opponentCommitted ||
+          gameState.gameOver ||
+          gameState.roundResult) {
+        return;
+      }
+
+      await evaluateRound();
+    };
+
+    evaluateRoundIfNeeded();
+  }, [gameState.playerCommitted, gameState.opponentCommitted]);
+
   // Evaluate round result
-  const evaluateRound = (playerMove: MoveType, opponentMove: MoveType) => {
-    console.log('Evaluating round result:', { playerMove, opponentMove });
+  const evaluateRound = async () => {
+    if (!gameState.playerMove || !gameState.opponentMove || !gameState.id) return;
+    
+    console.log('Evaluating round result:', { 
+      playerMove: gameState.playerMove, 
+      opponentMove: gameState.opponentMove 
+    });
     
     let roundResult: "win" | "lose" | "tie" | null = null;
     let playerScoreUpdate = 0;
@@ -274,64 +384,113 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setGameRounds(prev => ({
       ...prev,
       [gameState.round]: {
-        playerMove,
-        opponentMove
+        playerMove: gameState.playerMove,
+        opponentMove: gameState.opponentMove
       }
     }));
     
     // Determine round result
-    if (playerMove === opponentMove) {
+    if (gameState.playerMove === gameState.opponentMove) {
       roundResult = "tie";
-      toast({ title: "It's a tie!", description: "No points awarded." });
+      console.log('DRAW DETECTED: Both players chose', gameState.playerMove);
+      
+      // Only creator updates database for draws to avoid race conditions
+      if (gameState.isCreator) {
+        await updateRoundAndResult(
+          gameState.id,
+          'tie',
+          gameState.round + 1
+        );
+      }
     } else if (
-      (playerMove === "rock" && opponentMove === "scissors") ||
-      (playerMove === "paper" && opponentMove === "rock") ||
-      (playerMove === "scissors" && opponentMove === "paper")
+      (gameState.playerMove === "rock" && gameState.opponentMove === "scissors") ||
+      (gameState.playerMove === "paper" && gameState.opponentMove === "rock") ||
+      (gameState.playerMove === "scissors" && gameState.opponentMove === "paper")
     ) {
       roundResult = "win";
       playerScoreUpdate = 1;
-      toast({ title: "You won this round!", description: `${playerMove} beats ${opponentMove}` });
+      
+      if (gameState.isCreator) {
+        // Player wins
+        setGameState(prev => {
+          const newPlayerScore = prev.playerScore + 1;
+          
+          // Check if player won the game
+          if (newPlayerScore >= 2) {
+            handleGameOver(prev.playerPubkey);
+          } else {
+            // Continue to next round
+            updateRoundAndResult(
+              prev.id!,
+              'player1_win',
+              prev.round + 1
+            );
+          }
+          
+          return {
+            ...prev,
+            playerScore: newPlayerScore,
+            roundResult
+          };
+        });
+      }
     } else {
       roundResult = "lose";
       opponentScoreUpdate = 1;
-      toast({ title: "You lost this round!", description: `${opponentMove} beats ${playerMove}` });
+      
+      if (gameState.isCreator) {
+        // Opponent wins
+        setGameState(prev => {
+          const newOpponentScore = prev.opponentScore + 1;
+          
+          // Check if opponent won the game
+          if (newOpponentScore >= 2) {
+            handleGameOver(prev.opponentPubkey);
+          } else {
+            // Continue to next round
+            updateRoundAndResult(
+              prev.id!,
+              'player2_win',
+              prev.round + 1
+            );
+          }
+          
+          return {
+            ...prev,
+            opponentScore: newOpponentScore,
+            roundResult
+          };
+        });
+      }
     }
     
-    const newPlayerScore = gameState.playerScore + playerScoreUpdate;
-    const newOpponentScore = gameState.opponentScore + opponentScoreUpdate;
+    if (!gameState.isCreator) {
+      // Non-creator just updates local state
+      setGameState(prev => ({
+        ...prev,
+        playerScore: prev.playerScore + playerScoreUpdate,
+        opponentScore: prev.opponentScore + opponentScoreUpdate,
+        roundResult
+      }));
+    }
     
-    setGameState(prev => ({
-      ...prev,
-      roundResult,
-      playerScore: newPlayerScore,
-      opponentScore: newOpponentScore,
-    }));
-    
-    // Check for game over
-    if (newPlayerScore === 2 || newOpponentScore === 2) {
-      // Game is over, determine winner
-      setTimeout(() => {
-        const winnerAddress = newPlayerScore > newOpponentScore ? gameState.playerPubkey : gameState.opponentPubkey;
-        
-        // Only creator announces game over to avoid duplicate processing
-        if (gameState.isCreator) {
-          handleGameOver(winnerAddress);
-        }
-      }, 1500);
+    // Show appropriate toast based on result
+    if (roundResult === "tie") {
+      toast({ title: "It's a tie!", description: "No points awarded." });
+    } else if (roundResult === "win") {
+      toast({ 
+        title: "You won this round!", 
+        description: `${gameState.playerMove} beats ${gameState.opponentMove}` 
+      });
     } else {
-      // Continue to next round after a delay
-      setTimeout(() => {
-        setGameState(prev => ({
-          ...prev,
-          round: prev.round + 1,
-          playerMove: null,
-          opponentMove: null,
-          playerCommitted: false,
-          opponentCommitted: false,
-          roundResult: null
-        }));
-      }, 3000);
+      toast({ 
+        title: "You lost this round!", 
+        description: `${gameState.opponentMove} beats ${gameState.playerMove}` 
+      });
     }
+    
+    // Reset round timer
+    resetRoundTimer();
   };
   
   // Handle game over and payout to winner
@@ -352,10 +511,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         console.log('Processing payout to winner:', winnerAddress);
         
+        // Update game status in Supabase
+        await updateGameState(gameState.id, { 
+          status: 'completed',
+          round_result: winnerAddress
+        });
+        
         // Calculate total payout (stake amount * 2)
         const totalPayout = gameState.stake * 2;
         
-        // Create transaction to transfer total from escrow to winner
+        // Create transaction to transfer from escrow to winner
         const winnerPublicKey = new PublicKey(winnerAddress);
         
         // Send transaction to transfer funds from escrow to winner
@@ -372,28 +537,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Wait for confirmation
         const confirmation = await connection.confirmTransaction(signature);
         console.log('Payout transaction confirmed:', confirmation);
-        
-        // Update game status in Supabase
-        const { error } = await supabase
-          .from('games')
-          .update({ status: 'completed' })
-          .eq('id', gameState.id);
-        
-        if (error) {
-          console.error('Error updating game status:', error);
-        }
-        
-        // Broadcast game over to both players
-        supabase
-          .channel(`game_moves_${gameState.id}`)
-          .send({
-            type: 'broadcast',
-            event: 'game_over',
-            payload: {
-              winner: winnerAddress,
-              txSignature: signature
-            }
-          });
         
       } catch (error) {
         console.error('Error processing payout:', error);
@@ -440,7 +583,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       selectMove,
       commitMove,
       resetGame,
-      isLoading
+      isLoading,
+      resetRoundTimer
     }}>
       {children}
     </GameContext.Provider>

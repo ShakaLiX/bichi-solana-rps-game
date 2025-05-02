@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from "react";
+import { useGameContext } from "@/contexts/GameContext";
 
 interface TimerProps {
   seconds: number;
@@ -8,9 +9,17 @@ interface TimerProps {
 
 const Timer = ({ seconds, onComplete }: TimerProps) => {
   const [timeLeft, setTimeLeft] = useState(seconds);
+  const { gameState } = useGameContext();
+  
+  // Reset timer when shouldResetTimer changes or round changes
+  useEffect(() => {
+    console.log("Timer reset triggered by game state");
+    setTimeLeft(seconds);
+  }, [gameState.shouldResetTimer, gameState.round, seconds]);
   
   useEffect(() => {
     if (timeLeft <= 0) {
+      console.log("Timer completed");
       onComplete?.();
       return;
     }
