@@ -14,6 +14,18 @@ const LobbyPage = () => {
   useEffect(() => {
     const checkSupabaseConnection = async () => {
       try {
+        // Check if Supabase URL and key are configured
+        if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+          console.error('Supabase environment variables are missing');
+          toast({
+            title: "Configuration Error",
+            description: "Supabase URL and API Key are not configured. Please set your environment variables.",
+            variant: "destructive",
+          });
+          setIsSupabaseConnected(false);
+          return;
+        }
+        
         // Simple query to check if we can connect to Supabase
         const { data, error } = await supabase
           .from('games')
@@ -58,8 +70,14 @@ const LobbyPage = () => {
           </p>
           
           {!isSupabaseConnected && (
-            <div className="mt-4 p-2 bg-yellow-50 border border-yellow-200 rounded-md text-yellow-800">
-              Warning: Game server connection issues. Real-time updates may not work properly.
+            <div className="mt-4 p-4 bg-yellow-100 border border-yellow-300 rounded-md text-yellow-800">
+              <h3 className="font-bold">Supabase Not Connected</h3>
+              <p>This app requires Supabase to be properly configured. Please set the following environment variables:</p>
+              <ul className="list-disc list-inside mt-2">
+                <li>VITE_SUPABASE_URL</li>
+                <li>VITE_SUPABASE_ANON_KEY</li>
+              </ul>
+              <p className="mt-2">Without these, game creation and joining will not work properly.</p>
             </div>
           )}
         </div>

@@ -1,10 +1,55 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Check if credentials are available before creating client
+let supabase: ReturnType<typeof createClient>;
+
+if (supabaseUrl && supabaseAnonKey) {
+  // Only create client if both URL and key are available
+  supabase = createClient(supabaseUrl, supabaseAnonKey);
+  console.log('Supabase client initialized successfully');
+} else {
+  console.error('Missing Supabase credentials. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables.');
+  // Create a mock client that logs errors instead of crashing
+  supabase = {
+    from: () => ({
+      insert: () => {
+        console.error('Supabase not configured: Cannot insert data');
+        return { data: null, error: new Error('Supabase not configured') };
+      },
+      select: () => {
+        console.error('Supabase not configured: Cannot select data');
+        return { data: null, error: new Error('Supabase not configured') };
+      },
+      update: () => {
+        console.error('Supabase not configured: Cannot update data');
+        return { data: null, error: new Error('Supabase not configured') };
+      },
+      eq: () => ({
+        order: () => {
+          console.error('Supabase not configured: Cannot query data');
+          return { data: [], error: new Error('Supabase not configured') };
+        }
+      }),
+      single: () => {
+        console.error('Supabase not configured: Cannot fetch single record');
+        return { data: null, error: new Error('Supabase not configured') };
+      }
+    }),
+    channel: () => ({
+      on: () => ({
+        subscribe: () => ({
+          unsubscribe: () => console.log('Mock unsubscribe called')
+        })
+      })
+    })
+  } as any; // Type assertion to avoid TypeScript errors
+}
+
+export { supabase };
 
 // Types for our games table
 export interface GameRecord {
