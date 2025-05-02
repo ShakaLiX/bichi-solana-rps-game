@@ -1,13 +1,11 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { createTransferTransaction, ESCROW_PUBKEY, shortenAddress } from '@/lib/solana';
-import { fetchOpenGames, subscribeToGames, joinGame, GameRecord } from '@/lib/supabase';
+import { fetchOpenGames, subscribeToGames, joinGame, GameRecord, type RealtimePostgresChangesPayload } from '@/lib/supabase';
 import { format } from 'date-fns';
-import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // Convert Supabase GameRecord to our UI GameData format
 const recordToGameData = (record: GameRecord): GameData => {

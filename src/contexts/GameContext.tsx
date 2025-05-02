@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -11,7 +10,7 @@ import supabase, {
   recordMove,
   updateRoundAndResult,
   updateGameState,
-  RealtimePostgresChangesPayload
+  type RealtimePostgresChangesPayload
 } from "@/lib/supabase";
 import { shortenAddress, createTransferTransaction, ESCROW_PUBKEY } from '@/lib/solana';
 
@@ -231,7 +230,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     supabaseSubscription.current = subscribeToGame(gameId, (payload: RealtimePostgresChangesPayload<GameRecord>) => {
       if (!payload.new) return;
 
-      const gameData = payload.new;
+      const gameData = payload.new as GameRecord;
       const isCreator = gameState.isCreator;
       
       console.log('Game update received:', gameData);
@@ -239,10 +238,18 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Update local state based on database changes
       setGameState(prev => {
         // Extract player and opponent moves based on creator status
-        const playerMove = isCreator ? gameData.player1_move as MoveType : gameData.player2_move as MoveType;
-        const opponentMove = isCreator ? gameData.player2_move as MoveType : gameData.player1_move as MoveType;
-        const playerCommitted = isCreator ? !!gameData.player1_move : !!gameData.player2_move;
-        const opponentCommitted = isCreator ? !!gameData.player2_move : !!gameData.player1_move;
+        const playerMove = isCreator 
+          ? (gameData.player1_move as MoveType) 
+          : (gameData.player2_move as MoveType);
+        const opponentMove = isCreator 
+          ? (gameData.player2_move as MoveType) 
+          : (gameData.player1_move as MoveType);
+        const playerCommitted = isCreator 
+          ? !!gameData.player1_move 
+          : !!gameData.player2_move;
+        const opponentCommitted = isCreator 
+          ? !!gameData.player2_move 
+          : !!gameData.player1_move;
         
         // Detect round change
         const roundChanged = gameData.current_round !== prev.round;

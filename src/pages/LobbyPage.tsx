@@ -5,7 +5,7 @@ import Header from "@/components/Header";
 import CreateGameForm from "@/components/CreateGameForm";
 import GamesList from "@/components/GamesList";
 import { useToast } from "@/hooks/use-toast";
-import supabase, { subscribeToGames, RealtimePostgresChangesPayload, GameRecord } from "@/lib/supabase";
+import supabase, { subscribeToGames, type RealtimePostgresChangesPayload, GameRecord } from "@/lib/supabase";
 import { useWallet } from "@solana/wallet-adapter-react";
 
 const LobbyPage = () => {

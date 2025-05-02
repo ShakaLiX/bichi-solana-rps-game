@@ -1,9 +1,8 @@
-
 // Use the Supabase client that Lovable has already configured
 import { supabase } from '@/integrations/supabase/client';
-import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 export default supabase;
-export { RealtimePostgresChangesPayload };
+export type { RealtimePostgresChangesPayload };
 
 // Types for our games table
 export interface GameRecord {
