@@ -9,7 +9,7 @@ import { getBalance, shortenAddress } from '@/lib/solana';
 const WalletConnectButton = () => {
   const { toast } = useToast();
   const { publicKey, connected, disconnect } = useWallet();
-  const [balance, setBalance] = useState<number>(0);
+  const [balance, setBalance] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Function to get the wallet balance
@@ -31,6 +31,9 @@ const WalletConnectButton = () => {
             title: "Balance Error",
             description: "Failed to fetch wallet balance",
           });
+          if (isMounted) {
+            setBalance(null);
+          }
         } finally {
           if (isMounted) {
             setIsLoading(false);
@@ -44,10 +47,10 @@ const WalletConnectButton = () => {
       // Show toast for successful connection
       toast({
         title: "Wallet Connected",
-        description: "Successfully connected to wallet",
+        description: `Successfully connected to ${shortenAddress(publicKey.toString())}`,
       });
     } else {
-      setBalance(0);
+      setBalance(null);
     }
 
     return () => {
@@ -69,6 +72,7 @@ const WalletConnectButton = () => {
       setIsLoading(true);
       try {
         const walletBalance = await getBalance(publicKey);
+        console.log("Refreshed balance:", walletBalance);
         setBalance(walletBalance);
         toast({
           title: "Balance Updated",
@@ -80,6 +84,7 @@ const WalletConnectButton = () => {
           title: "Balance Error",
           description: "Failed to refresh wallet balance",
         });
+        setBalance(null);
       } finally {
         setIsLoading(false);
       }
@@ -93,7 +98,13 @@ const WalletConnectButton = () => {
           <div className="text-sm font-medium text-right">
             <p className="text-bichi-brown">{shortenAddress(publicKey.toString())}</p>
             <div className="flex items-center gap-1">
-              <p className="font-bold">{isLoading ? "Loading..." : `${balance.toFixed(2)} SOL`}</p>
+              {isLoading ? (
+                <p className="font-bold">Loading...</p>
+              ) : balance !== null ? (
+                <p className="font-bold">{balance.toFixed(4)} SOL</p>
+              ) : (
+                <p className="font-bold text-red-500">Error</p>
+              )}
               <Button 
                 variant="ghost" 
                 size="icon"

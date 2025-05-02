@@ -10,15 +10,17 @@ export const getEndpoint = (network = WalletAdapterNetwork.Devnet) => {
 
 // Create a connection to Solana
 export const getConnection = (network = WalletAdapterNetwork.Devnet) => {
-  return new Connection(getEndpoint(network), 'confirmed');
+  // Using 'processed' instead of 'confirmed' for more up-to-date balance
+  return new Connection(getEndpoint(network), 'processed');
 };
 
 // Get the balance for a public key (in SOL)
 export const getBalance = async (publicKey: PublicKey): Promise<number> => {
   const connection = getConnection();
   try {
-    // Make sure we're using the latest commitment level for accurate balance
-    const balance = await connection.getBalance(publicKey, 'confirmed');
+    // Using 'processed' commitment for more recent balance updates
+    const balance = await connection.getBalance(publicKey, 'processed');
+    console.log('Raw balance in lamports:', balance);
     return balance / LAMPORTS_PER_SOL;
   } catch (error) {
     console.error('Error getting balance:', error);
@@ -42,7 +44,7 @@ export const createTransferTransaction = async (
   );
   
   // Get the latest blockhash
-  const { blockhash } = await connection.getLatestBlockhash('confirmed');
+  const { blockhash } = await connection.getLatestBlockhash('processed');
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = fromPubkey;
   
