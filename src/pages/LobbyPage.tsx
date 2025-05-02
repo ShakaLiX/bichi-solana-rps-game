@@ -19,11 +19,21 @@ const LobbyPage: React.FC = () => {
     })();
   }, []);
 
+  // Handler called after creating a new game
+  const handleCreated = (id: string) => {
+    navigate(`/game/${id}`);
+  };
+
+  // Handler called when joining an existing game
+  const handleJoin = (id: string) => {
+    navigate(`/game/${id}`);
+  };
+
   return (
     <div className="p-8">
       <h1 className="text-2xl font-bold mb-4">Bichi RPS Lobby</h1>
-      <CreateGameForm onCreated={id => navigate(`/game/${id}`)} />
-      <GamesList games={games} onJoin={id => navigate(`/game/${id}`)} />
+      <CreateGameForm onCreated={handleCreated} />
+      <GamesList games={games} onJoin={handleJoin} />
     </div>
   );
 };
