@@ -1,39 +1,67 @@
+// src/components/CreateGameForm.tsx
 import React, { useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { createGameRecord } from '@/lib/supabase';
 import { createTransferTransaction, ESCROW_PUBKEY } from '@/lib/solana';
-import { Transaction } from '@solana/web3.js';
+import { PublicKey } from '@solana/web3.js';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
-interface Props { onCreated: (id: string) => void; }
+interface Props {
+  onCreated: (id: string) => void;
+}
+
 const CreateGameForm: React.FC<Props> = ({ onCreated }) => {
   const { publicKey, sendTransaction } = useWallet();
-  const [stake, setStake] = useState(0.1);
+  const [stake, setStake] = useState<number>(0);
+  const [loading, setLoading] = useState(false);
 
-  const handle = async () => {
-    if (!publicKey) return;
-    const { data, error } = await createGameRecord(publicKey.toString(), stake);
-    if (error || !data) return;
-    const tx = new Transaction().add(
-      createTransferTransaction(publicKey, ESCROW_PUBKEY, stake)
-    );
-    await sendTransaction(tx, undefined);
-    onCreated(data.id);
+  const handleCreate = async () => {
+    if (!publicKey || stake <= 0) return;
+    setLoading(true);
+
+    try {
+      // 1️⃣ Send stake to escrow account
+      const tx = await createTransferTransaction(
+        ESCROW_PUBKEY,
+        new PublicKey(ESCROW_PUBKEY), // your escrow address
+        stake
+      );
+      const sig = await sendTransaction(tx, connection);
+      await connection.confirmTransaction(sig);
+
+      // 2️⃣ Record the game in Supabase
+      const record = await createGameRecord(publicKey.toString(), stake);
+      if (record) {
+        onCreated(record.id);
+      } else {
+        alert('Failed to record game. Try again.');
+      }
+    } catch (err) {
+      console.error('Game creation error:', err);
+      alert('Error creating game. See console.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div>
-      <input
+    <div className="mb-6 flex items-center space-x-4">
+      <Input
         type="number"
+        min={0.001}
+        step={0.001}
         value={stake}
-        onChange={e => setStake(+e.target.value)}
-        className="border px-2 py-1"
+        onChange={e => setStake(parseFloat(e.target.value))}
+        placeholder="Stake (SOL)"
+        className="w-32"
       />
-      <button
-        onClick={handle}
-        className="ml-2 bg-blue-500 text-white px-4 py-1 rounded"
+      <Button
+        onClick={handleCreate}
+        disabled={!publicKey || loading}
       >
-        Create Game
-      </button>
+        {loading ? 'Creating…' : 'Create Game'}
+      </Button>
     </div>
   );
 };
