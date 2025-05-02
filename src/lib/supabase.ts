@@ -1,8 +1,9 @@
-
 import { createClient } from '@supabase/supabase-js';
 
-export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
-export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;
+// Try to get values from environment variables, otherwise use hardcoded values
+// This ensures the app works both in development and production
+export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://uuhdluysciuxzswveaqx.supabase.co";
+export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1aGRsdXlzY2l1eHpzd3ZlYXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDYyMTAwMzUsImV4cCI6MjA2MTc4NjAzNX0.LFa32-oU0cFhlbsANmnS5Y9_3cqT6SnxK4QYLM527tU";
 
 // Create Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
