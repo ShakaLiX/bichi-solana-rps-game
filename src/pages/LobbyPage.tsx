@@ -1,3 +1,4 @@
+// src/pages/LobbyPage.tsx
 import React, { useEffect, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { fetchOpenGames, GameRecord } from '@/lib/supabase';
