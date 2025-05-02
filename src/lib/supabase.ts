@@ -1,6 +1,7 @@
 
 // Use the Supabase client that Lovable has already configured
 import { supabase } from '@/integrations/supabase/client';
+import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 export default supabase;
 
 // Types for our games table
@@ -100,7 +101,7 @@ export const joinGame = async (
 
 // Subscribe to game changes (for real-time updates)
 export const subscribeToGames = (
-  callback: (payload: { new: GameRecord, eventType: string }) => void
+  callback: (payload: RealtimePostgresChangesPayload<GameRecord>) => void
 ) => {
   return supabase
     .channel('games_channel')
@@ -108,12 +109,8 @@ export const subscribeToGames = (
       { event: '*', schema: 'public', table: 'games' },
       (payload) => {
         console.log('Game change detected:', payload);
-        callback({
-          new: payload.new as GameRecord,
-          eventType: payload.eventType
-        });
+        callback(payload as RealtimePostgresChangesPayload<GameRecord>);
       }
     )
     .subscribe();
 };
-

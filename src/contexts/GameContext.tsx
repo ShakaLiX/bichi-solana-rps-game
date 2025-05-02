@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -228,8 +227,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         });
       
-      if (response.status !== 200) {
-        console.error('Error broadcasting move:', response);
+      // Check if response was successful
+      if (response === 'error') {
+        console.error('Error broadcasting move');
         throw new Error('Failed to send your move');
       }
       
