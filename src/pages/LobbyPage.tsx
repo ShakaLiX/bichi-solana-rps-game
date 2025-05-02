@@ -4,7 +4,7 @@ import Header from "@/components/Header";
 import CreateGameForm from "@/components/CreateGameForm";
 import GamesList from "@/components/GamesList";
 import { useToast } from "@/hooks/use-toast";
-import { supabase, supabaseUrl, supabaseAnonKey } from "@/lib/supabase";
+import supabase from "@/lib/supabase";
 
 const LobbyPage = () => {
   const { toast } = useToast();
@@ -14,18 +14,6 @@ const LobbyPage = () => {
   useEffect(() => {
     const checkSupabaseConnection = async () => {
       try {
-        // Check if Supabase URL and key are configured
-        if (!supabaseUrl || !supabaseAnonKey) {
-          console.error('Supabase environment variables are missing');
-          toast({
-            title: "Configuration Error",
-            description: "Supabase URL and API Key are not configured. Please set your environment variables.",
-            variant: "destructive",
-          });
-          setIsSupabaseConnected(false);
-          return;
-        }
-        
         // Simple query to check if we can connect to Supabase
         const { data, error } = await supabase
           .from('games')

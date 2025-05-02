@@ -1,11 +1,7 @@
 
-import { createClient } from '@supabase/supabase-js';
-
-export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
-export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;
-
-// Create Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Use the Supabase client that Lovable has already configured
+import { supabase } from '@/integrations/supabase/client';
+export default supabase;
 
 // Types for our games table
 export interface GameRecord {
