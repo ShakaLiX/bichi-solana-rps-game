@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -6,7 +5,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { Transaction } from '@solana/web3.js';
 import { createTransferTransaction, ESCROW_PUBKEY, getBalance, shortenAddress } from '@/lib/solana';
-import { addGame } from './GamesList';
+import { createGameRecord } from '@/lib/supabase';
 import { format } from 'date-fns';
 
 const CreateGameForm = () => {
@@ -113,20 +112,18 @@ const CreateGameForm = () => {
         throw new Error(`Transaction failed: ${confirmation.value.err.toString()}`);
       }
       
-      // Create a new game object
-      const newGame = {
-        id: signature.slice(0, 8), // Use part of the transaction signature as the game ID
-        creator: shortenAddress(publicKey.toBase58()),
-        creatorPubkey: publicKey.toBase58(),
-        stake: stakeAmount,
-        timestamp: format(new Date(), 'hh:mm a')
-      };
+      // Save the game to Supabase
+      console.log("Saving game record to Supabase...");
+      const gameRecord = await createGameRecord(
+        publicKey.toBase58(),
+        stakeAmount
+      );
       
-      console.log("Creating new game object:", newGame);
+      if (!gameRecord) {
+        throw new Error("Failed to save game to database");
+      }
       
-      // Add the new game to our games store
-      const updatedGames = addGame(newGame);
-      console.log("Updated games list:", updatedGames);
+      console.log("Game record saved successfully:", gameRecord);
       
       toast({
         title: "Game Created!",

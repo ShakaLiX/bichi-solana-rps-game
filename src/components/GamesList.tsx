@@ -1,11 +1,24 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useWallet } from '@solana/wallet-adapter-react';
 import { createTransferTransaction, ESCROW_PUBKEY, shortenAddress } from '@/lib/solana';
+import { fetchOpenGames, subscribeToGames, joinGame, GameRecord } from '@/lib/supabase';
+import { format } from 'date-fns';
 
-// This would come from our blockchain in a real implementation
+// Convert Supabase GameRecord to our UI GameData format
+const recordToGameData = (record: GameRecord): GameData => {
+  return {
+    id: record.id,
+    creator: shortenAddress(record.creator_wallet),
+    creatorPubkey: record.creator_wallet,
+    stake: record.stake_amount,
+    timestamp: format(new Date(record.created_at), 'hh:mm a')
+  };
+};
+
 interface GameData {
   id: string;
   creator: string;
@@ -14,23 +27,6 @@ interface GameData {
   timestamp: string;
 }
 
-// Mock data for available games - in a real app, this would be fetched from blockchain
-const MOCK_GAMES: GameData[] = [
-  { id: "1", creator: "3j5n...9k2m", creatorPubkey: "3j5n9k2mDzP8C6VEjkpQZ7wBrNa1X9HbKoJg7K8T", stake: 0.1, timestamp: "01:25 PM" },
-  { id: "2", creator: "8z7n...3k4j", creatorPubkey: "8z7n3k4jL5Wx2YqF6bRnMzJpT9aS4DvEoG1H2K3m", stake: 0.5, timestamp: "01:41 PM" },
-  { id: "3", creator: "2k8m...7j3n", creatorPubkey: "2k8m7j3nQsFgD9Hr1TbAyZvP5wX6C4LjKoN8E2Rp", stake: 0.2, timestamp: "01:50 PM" },
-];
-
-// Create a global set of games to be shared across components
-export let gamesStore = [...MOCK_GAMES];
-
-// Function to add a new game to the store
-export const addGame = (game: GameData) => {
-  console.log("Adding game to store:", game);
-  gamesStore = [game, ...gamesStore];
-  return gamesStore;
-};
-
 type FilterType = "ALL" | "SOL" | "USDC" | "RAY";
 
 const GamesList = () => {
@@ -38,24 +34,53 @@ const GamesList = () => {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterType>("ALL");
   const [joiningId, setJoiningId] = useState<string | null>(null);
-  const [games, setGames] = useState<GameData[]>(gamesStore);
+  const [games, setGames] = useState<GameData[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const { publicKey, signTransaction, connected } = useWallet();
 
-  // In a real implementation, we would fetch games from the blockchain
+  // Fetch games from Supabase and set up real-time subscription
   useEffect(() => {
-    // Function to fetch games
-    const fetchGames = async () => {
-      console.log("Fetching games from store...");
-      setGames([...gamesStore]);
+    const loadGames = async () => {
+      setIsLoading(true);
+      try {
+        // Fetch initial games
+        const openGames = await fetchOpenGames();
+        console.log('Initial open games loaded:', openGames);
+        setGames(openGames.map(recordToGameData));
+      } catch (error) {
+        console.error('Error loading initial games:', error);
+        toast({
+          title: "Error Loading Games",
+          description: "Failed to load available games. Please refresh the page.",
+          variant: "destructive"
+        });
+      } finally {
+        setIsLoading(false);
+      }
     };
 
-    fetchGames();
+    // Initial load
+    loadGames();
     
-    // Set up polling to refresh games
-    const interval = setInterval(fetchGames, 5000); // Poll every 5 seconds
-    
-    return () => clearInterval(interval);
-  }, []);
+    // Set up real-time subscription for updates
+    const subscription = subscribeToGames((payload) => {
+      console.log('Real-time game update received:', payload);
+      
+      if (payload.eventType === 'INSERT' && payload.new.status === 'open') {
+        // New game was created
+        setGames(prevGames => [recordToGameData(payload.new), ...prevGames]);
+      } 
+      else if (payload.eventType === 'UPDATE' && payload.new.status === 'joined') {
+        // Game was joined, remove it from the list
+        setGames(prevGames => prevGames.filter(game => game.id !== payload.new.id));
+      }
+    });
+
+    // Cleanup subscription on component unmount
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [toast]);
 
   const handleJoinGame = async (id: string, stake: number) => {
     if (!publicKey || !signTransaction || !connected) {
@@ -80,34 +105,31 @@ const GamesList = () => {
       // Sign the transaction
       const signedTransaction = await signTransaction(transaction);
       
-      // In a real implementation, we would send the transaction here
-      // For now, we'll simulate this with a timeout
-      setTimeout(() => {
-        toast({
-          title: "Joined Game!",
-          description: `You've joined a game with ${stake} SOL stake. Starting now...`,
-        });
-        
-        // Navigate to game page after joining
-        setTimeout(() => {
-          navigate("/game");
-        }, 1000);
-        
-        setJoiningId(null);
-      }, 1500);
+      // Update the game status in Supabase
+      const success = await joinGame(id, publicKey.toString());
       
-      // In a real implementation, we would broadcast the transaction:
-      // const connection = getConnection();
-      // const signature = await connection.sendRawTransaction(signedTransaction.serialize());
-      // await connection.confirmTransaction(signature);
+      if (!success) {
+        throw new Error("Failed to update game status in database");
+      }
+      
+      toast({
+        title: "Joined Game!",
+        description: `You've joined a game with ${stake} SOL stake. Starting now...`,
+      });
+      
+      // Navigate to game page after joining
+      setTimeout(() => {
+        navigate("/game");
+      }, 1000);
       
     } catch (error) {
-      console.error('Transaction error:', error);
+      console.error('Transaction or database error:', error);
       toast({
-        title: "Transaction Failed",
-        description: "Failed to join game. Please try again.",
+        title: "Failed to Join Game",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
         variant: "destructive"
       });
+    } finally {
       setJoiningId(null);
     }
   };
@@ -146,7 +168,12 @@ const GamesList = () => {
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredGames.length > 0 ? (
+        {isLoading ? (
+          <div className="col-span-3 text-center py-8">
+            <div className="animate-spin inline-block h-8 w-8 border-4 border-bichi-orange border-t-transparent rounded-full mb-2"></div>
+            <p className="text-muted-foreground">Loading games...</p>
+          </div>
+        ) : filteredGames.length > 0 ? (
           filteredGames.map((game) => (
             <div key={game.id} className="game-card">
               <div className="flex justify-between items-center mb-2">
