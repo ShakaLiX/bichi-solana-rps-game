@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,7 @@ const GamesList = () => {
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [games, setGames] = useState<GameData[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const { publicKey, signTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, sendTransaction, connected } = useWallet();
 
   // Fetch games from Supabase and set up real-time subscription
   useEffect(() => {
@@ -101,8 +102,9 @@ const GamesList = () => {
         stake
       );
 
-      // Sign the transaction
-      const signedTransaction = await signTransaction(transaction);
+      // Sign and send the transaction
+      const signature = await sendTransaction(transaction);
+      console.log('Stake transaction sent:', signature);
       
       // Update the game status in Supabase
       const success = await joinGame(id, publicKey.toString());
@@ -117,9 +119,7 @@ const GamesList = () => {
       });
       
       // Navigate to game page after joining
-      setTimeout(() => {
-        navigate("/game");
-      }, 1000);
+      navigate(`/game/${id}`);
       
     } catch (error) {
       console.error('Transaction or database error:', error);

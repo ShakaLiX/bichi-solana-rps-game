@@ -1,44 +1,47 @@
 
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import CreateGameForm from "@/components/CreateGameForm";
 import GamesList from "@/components/GamesList";
 import { useToast } from "@/hooks/use-toast";
-import supabase from "@/lib/supabase";
+import supabase, { subscribeToGames } from "@/lib/supabase";
+import { useWallet } from "@solana/wallet-adapter-react";
 
 const LobbyPage = () => {
   const { toast } = useToast();
-  const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
+  const navigate = useNavigate();
+  const { publicKey } = useWallet();
   
-  // Check Supabase connection on load
+  // Set up real-time subscription for game status changes
   useEffect(() => {
-    const checkSupabaseConnection = async () => {
-      try {
-        // Simple query to check if we can connect to Supabase
-        const { data, error } = await supabase
-          .from('games')
-          .select('count()', { count: 'exact', head: true });
-        
-        if (error) {
-          console.error('Supabase connection error:', error);
-          toast({
-            title: "Connection Error",
-            description: "Could not connect to the game server. Some features may be unavailable.",
-            variant: "destructive",
-          });
-          setIsSupabaseConnected(false);
-        } else {
-          console.log('Supabase connected successfully');
-          setIsSupabaseConnected(true);
-        }
-      } catch (error) {
-        console.error('Error checking Supabase connection:', error);
-        setIsSupabaseConnected(false);
-      }
-    };
+    if (!publicKey) return;
     
-    checkSupabaseConnection();
-  }, [toast]);
+    const walletAddress = publicKey.toString();
+    console.log('Setting up game subscription for wallet:', walletAddress);
+    
+    const subscription = subscribeToGames((payload) => {
+      // If a game changed to 'joined' status and current user is either creator or joiner
+      if (payload.eventType === 'UPDATE' && 
+          payload.new.status === 'joined' && 
+          (payload.new.creator_wallet === walletAddress || 
+           payload.new.joined_wallet === walletAddress)) {
+        
+        console.log('Game joined, navigating to game page:', payload.new.id);
+        toast({
+          title: "Game Started!",
+          description: "Another player has joined your game. Starting now...",
+        });
+        
+        // Navigate to the game with the game ID
+        navigate(`/game/${payload.new.id}`);
+      }
+    });
+    
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [publicKey, navigate, toast]);
   
   return (
     <div className="min-h-screen flex flex-col">
@@ -56,13 +59,6 @@ const LobbyPage = () => {
             The cutest blockchain-based Rock-Paper-Scissors game. Connect your
             wallet, stake tokens, and play with the adorable BICHI mascot!
           </p>
-          
-          {!isSupabaseConnected && (
-            <div className="mt-4 p-4 bg-yellow-100 border border-yellow-300 rounded-md text-yellow-800">
-              <h3 className="font-bold">Supabase Not Connected</h3>
-              <p>This app requires Supabase to be properly configured. Please check your connection settings.</p>
-            </div>
-          )}
         </div>
         
         <CreateGameForm />
