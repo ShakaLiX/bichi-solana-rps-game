@@ -10,13 +10,18 @@ const LobbyPage: React.FC = () => {
   const navigate = useNavigate();
   const [games, setGames] = useState<any[]>([]);
 
-  useEffect(() => {
-    (async () => setGames(await fetchOpenGames()))();
-    const sub = subscribeToGame('all', payload => {
-      setGames(prev => prev.map(g => (g.id === payload.new.id ? payload.new : g)));
-    });
-    return () => sub.unsubscribe();
-  }, []);
+ useEffect(() => {
+-  const sub = subscribeToGame('all', payload => {
+-    setGames(prev => prev.map(g => (g.id === payload.new.id ? payload.new : g)));
+-  });
+-  return () => sub.unsubscribe();
++  // Only fetch once (you don’t need real-time in lobby)
++  ;(async () => {
++    const open = await fetchOpenGames();
++    setGames(open);
++  })();
+}, []);
+
 
   return (
     <div className="p-8">
