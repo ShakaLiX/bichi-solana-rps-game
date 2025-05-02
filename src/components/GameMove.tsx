@@ -34,7 +34,9 @@ const GameMove = ({ moveType, selected = false, onClick, disabled = false }: Gam
       className={`move-button ${selected ? 'selected' : ''} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       onClick={!disabled ? onClick : undefined}
     >
-      <div className="text-3xl">{icon}</div>
+      <div className="flex items-center justify-center">
+        {icon}
+      </div>
       <span className="text-sm font-medium text-bichi-brown">{label}</span>
     </div>
   );
