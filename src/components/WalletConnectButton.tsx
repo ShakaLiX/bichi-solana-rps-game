@@ -1,65 +1,74 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-
-// Mock wallet data for the UI demo
-interface WalletData {
-  connected: boolean;
-  publicKey: string | null;
-  balance: number;
-}
+import { useWallet } from '@solana/wallet-adapter-react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { LAMPORTS_PER_SOL, Connection, clusterApiUrl } from '@solana/web3.js';
 
 const WalletConnectButton = () => {
   const { toast } = useToast();
-  const [wallet, setWallet] = useState<WalletData>({
-    connected: false,
-    publicKey: null,
-    balance: 0
-  });
+  const { publicKey, connected, disconnect } = useWallet();
+  const [balance, setBalance] = useState<number>(0);
 
-  const connectWallet = () => {
-    // In a real implementation, this would connect to the Phantom wallet
-    // For now, we're simulating the connection with mock data
+  // Function to get the wallet balance
+  useEffect(() => {
+    let isMounted = true;
     
-    // Mock successful connection
-    setWallet({
-      connected: true,
-      publicKey: "Bz7n...3k4j",
-      balance: 5.24
-    });
-    
-    toast({
-      title: "Wallet Connected",
-      description: "Successfully connected to Phantom wallet",
-    });
-  };
+    const getBalance = async () => {
+      if (publicKey) {
+        try {
+          const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
+          const walletBalance = await connection.getBalance(publicKey);
+          if (isMounted) {
+            setBalance(walletBalance / LAMPORTS_PER_SOL);
+          }
+        } catch (error) {
+          console.error('Failed to fetch balance:', error);
+          toast({
+            title: "Balance Error",
+            description: "Failed to fetch wallet balance",
+          });
+        }
+      }
+    };
 
-  const disconnectWallet = () => {
-    setWallet({
-      connected: false,
-      publicKey: null,
-      balance: 0
-    });
-    
+    if (connected) {
+      getBalance();
+      // Show toast for successful connection
+      toast({
+        title: "Wallet Connected",
+        description: "Successfully connected to wallet",
+      });
+    } else {
+      setBalance(0);
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [publicKey, connected, toast]);
+
+  // Custom disconnect handler to show toast
+  const handleDisconnect = async () => {
+    await disconnect();
     toast({
       title: "Wallet Disconnected",
       description: "Wallet has been disconnected",
     });
   };
 
-  if (wallet.connected) {
+  if (connected && publicKey) {
     return (
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
           <div className="text-sm font-medium text-right">
-            <p className="text-bichi-brown">{wallet.publicKey}</p>
-            <p className="font-bold">{wallet.balance} SOL</p>
+            <p className="text-bichi-brown">{publicKey.toString().slice(0, 4) + '...' + publicKey.toString().slice(-4)}</p>
+            <p className="font-bold">{balance.toFixed(2)} SOL</p>
           </div>
           <Button 
             variant="outline" 
             className="border-bichi-orange text-bichi-brown hover:bg-bichi-light-orange"
-            onClick={disconnectWallet}
+            onClick={handleDisconnect}
           >
             Disconnect
           </Button>
@@ -68,13 +77,13 @@ const WalletConnectButton = () => {
     );
   }
 
+  // Use the styled button but keep our styling for consistency
   return (
-    <Button 
-      className="bg-white text-bichi-brown border border-bichi-orange hover:bg-bichi-light-orange"
-      onClick={connectWallet}
-    >
-      Connect Wallet
-    </Button>
+    <div className="wallet-adapter-button-wrapper">
+      <WalletMultiButton 
+        className="bg-white text-bichi-brown border border-bichi-orange hover:bg-bichi-light-orange wallet-adapter-button"
+      />
+    </div>
   );
 };
 

@@ -1,110 +1,38 @@
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import Timer from "./Timer";
 import GameMove from "./GameMove";
-
-type MoveType = "rock" | "paper" | "scissors" | null;
+import { useGameContext } from "@/contexts/GameContext";
+import { shortenAddress } from "@/lib/solana";
+import { useWallet } from "@solana/wallet-adapter-react";
 
 const GameBoard = () => {
   const { toast } = useToast();
-  const [round, setRound] = useState(1);
-  const [playerScore, setPlayerScore] = useState(0);
-  const [opponentScore, setOpponentScore] = useState(0);
-  const [selectedMove, setSelectedMove] = useState<MoveType>(null);
-  const [playerCommitted, setPlayerCommitted] = useState(false);
-  const [opponentCommitted, setOpponentCommitted] = useState(false);
-  const [roundResult, setRoundResult] = useState<"win" | "lose" | "tie" | null>(null);
-  const [opponentMove, setOpponentMove] = useState<MoveType>(null);
-  const [gameOver, setGameOver] = useState(false);
+  const { connected } = useWallet();
+  const { gameState, selectMove, commitMove, isLoading } = useGameContext();
   
-  // Simulate opponent committing after a random delay
+  // Check if wallet is connected
   useEffect(() => {
-    if (playerCommitted && !opponentCommitted) {
-      const delay = Math.random() * 5000 + 1000; // 1-6 seconds
-      const timer = setTimeout(() => {
-        setOpponentCommitted(true);
-        // Reveal moves and determine result after both committed
-        setTimeout(revealMoves, 1000);
-      }, delay);
-      
-      return () => clearTimeout(timer);
+    if (!connected) {
+      toast({
+        title: "Wallet Not Connected",
+        description: "Please connect your wallet to play the game.",
+        variant: "destructive"
+      });
     }
-  }, [playerCommitted, opponentCommitted]);
+  }, [connected, toast]);
   
-  const handleSelectMove = (move: MoveType) => {
-    if (playerCommitted || gameOver) return;
-    setSelectedMove(move);
+  const handleSelectMove = (move: "rock" | "paper" | "scissors" | null) => {
+    if (gameState.playerCommitted || gameState.gameOver) return;
+    selectMove(move);
   };
   
-  const handleCommitMove = () => {
-    if (!selectedMove || playerCommitted || gameOver) return;
-    
-    setPlayerCommitted(true);
-    toast({
-      title: "Move Committed",
-      description: "Waiting for your opponent to make a move...",
-    });
-  };
-  
-  const revealMoves = () => {
-    // Generate random opponent move
-    const moves: MoveType[] = ["rock", "paper", "scissors"];
-    const randomMove = moves[Math.floor(Math.random() * moves.length)];
-    setOpponentMove(randomMove);
-    
-    // Determine round result
-    if (selectedMove === randomMove) {
-      setRoundResult("tie");
-      toast({ title: "It's a tie!", description: "No points awarded." });
-    } else if (
-      (selectedMove === "rock" && randomMove === "scissors") ||
-      (selectedMove === "paper" && randomMove === "rock") ||
-      (selectedMove === "scissors" && randomMove === "paper")
-    ) {
-      setRoundResult("win");
-      setPlayerScore(prev => prev + 1);
-      toast({ title: "You won this round!", description: `${selectedMove} beats ${randomMove}` });
-    } else {
-      setRoundResult("lose");
-      setOpponentScore(prev => prev + 1);
-      toast({ title: "You lost this round!", description: `${randomMove} beats ${selectedMove}` });
-    }
-    
-    // Check for game over
-    if (playerScore + 1 === 2) {
-      // Player wins the match
-      setTimeout(() => {
-        setGameOver(true);
-        toast({
-          title: "🎉 You won the match!",
-          description: "Your reward has been transferred to your wallet.",
-          duration: 5000,
-        });
-      }, 1500);
-    } else if (opponentScore + 1 === 2) {
-      // Opponent wins the match
-      setTimeout(() => {
-        setGameOver(true);
-        toast({
-          title: "Game Over",
-          description: "You lost the match. Better luck next time!",
-          duration: 5000,
-        });
-      }, 1500);
-    } else {
-      // Continue to next round
-      setTimeout(() => {
-        setRound(prev => prev + 1);
-        setSelectedMove(null);
-        setOpponentMove(null);
-        setPlayerCommitted(false);
-        setOpponentCommitted(false);
-        setRoundResult(null);
-      }, 3000);
-    }
+  const handleCommitMove = async () => {
+    if (!gameState.playerMove || gameState.playerCommitted || gameState.gameOver) return;
+    await commitMove();
   };
   
   return (
@@ -118,12 +46,12 @@ const GameBoard = () => {
         
         <div className="text-center">
           <h2 className="text-xl font-medium text-bichi-brown">
-            Round {round}/3 · {playerScore} - {opponentScore}
+            Round {gameState.round}/3 · {gameState.playerScore} - {gameState.opponentScore}
           </h2>
         </div>
         
         <div className="text-right">
-          <span className="text-bichi-brown font-medium">Stake: 0.2 SOL</span>
+          <span className="text-bichi-brown font-medium">Stake: {gameState.stake} SOL</span>
         </div>
       </div>
       
@@ -134,13 +62,15 @@ const GameBoard = () => {
             <div className="inline-block bg-pink-200 rounded-full px-4 py-1 text-sm font-medium text-pink-700 mb-2">
               YOU
             </div>
-            <p className="text-bichi-brown">Bz7n...3k4j</p>
+            <p className="text-bichi-brown">
+              {gameState.playerPubkey ? shortenAddress(gameState.playerPubkey) : 'Not Connected'}
+            </p>
           </div>
           
           <div className="flex-grow flex items-center justify-center">
-            {playerCommitted ? (
+            {gameState.playerCommitted ? (
               <div className="text-center">
-                {roundResult === null ? (
+                {gameState.roundResult === null ? (
                   <div className="text-bichi-brown">
                     <div className="bg-bichi-light-orange rounded-full p-3">
                       <span className="text-3xl">🔒</span>
@@ -149,8 +79,9 @@ const GameBoard = () => {
                   </div>
                 ) : (
                   <div className="text-center">
-                    <div className="text-5xl mb-2">{selectedMove === "rock" ? "👊" : selectedMove === "paper" ? "✋" : "✌️"}</div>
-                    <p className="text-bichi-brown capitalize">{selectedMove}</p>
+                    <div className="text-5xl mb-2">
+                      {gameState.playerMove && <GameMove moveType={gameState.playerMove} />}
+                    </div>
                   </div>
                 )}
               </div>
@@ -165,27 +96,27 @@ const GameBoard = () => {
         {/* Center - timer and moves */}
         <div className="flex flex-col items-center justify-between">
           <div className="flex flex-col items-center justify-center mt-4">
-            {!gameOver && !roundResult && (
-              <Timer seconds={30} onComplete={playerCommitted ? undefined : () => handleSelectMove("rock")} />
+            {!gameState.gameOver && !gameState.roundResult && (
+              <Timer seconds={30} onComplete={gameState.playerCommitted ? undefined : () => handleSelectMove("rock")} />
             )}
             
             <div className="text-3xl font-bold text-bichi-brown mt-4">VS</div>
             
-            {roundResult && (
+            {gameState.roundResult && (
               <div className="my-4">
-                {roundResult === "win" && (
+                {gameState.roundResult === "win" && (
                   <div className="text-center">
                     <div className="text-3xl mb-2">🎉</div>
                     <p className="font-bold text-green-600">You win!</p>
                   </div>
                 )}
-                {roundResult === "lose" && (
+                {gameState.roundResult === "lose" && (
                   <div className="text-center">
                     <div className="text-3xl mb-2">😢</div>
                     <p className="font-bold text-red-500">You lose!</p>
                   </div>
                 )}
-                {roundResult === "tie" && (
+                {gameState.roundResult === "tie" && (
                   <div className="text-center">
                     <div className="text-3xl mb-2">🤝</div>
                     <p className="font-bold text-yellow-600">It's a tie!</p>
@@ -194,13 +125,13 @@ const GameBoard = () => {
               </div>
             )}
             
-            {!roundResult && (
+            {!gameState.roundResult && (
               <p className="text-center text-bichi-brown my-2">
                 Choose your move to play!
               </p>
             )}
             
-            {gameOver ? (
+            {gameState.gameOver ? (
               <img 
                 src="/lovable-uploads/7ca7c629-e231-4762-8cd9-27664b7d3a98.png"
                 alt="Bichi Mascot"
@@ -215,36 +146,47 @@ const GameBoard = () => {
             )}
           </div>
           
-          {!playerCommitted && !gameOver && (
+          {!gameState.playerCommitted && !gameState.gameOver && (
             <div className="grid grid-cols-3 gap-4 mt-4">
               <GameMove 
                 moveType="rock" 
-                selected={selectedMove === "rock"}
+                selected={gameState.playerMove === "rock"}
                 onClick={() => handleSelectMove("rock")}
+                disabled={!connected}
               />
               <GameMove 
                 moveType="paper" 
-                selected={selectedMove === "paper"}
+                selected={gameState.playerMove === "paper"}
                 onClick={() => handleSelectMove("paper")}
+                disabled={!connected}
               />
               <GameMove 
                 moveType="scissors" 
-                selected={selectedMove === "scissors"}
+                selected={gameState.playerMove === "scissors"}
                 onClick={() => handleSelectMove("scissors")}
+                disabled={!connected}
               />
             </div>
           )}
           
-          {selectedMove && !playerCommitted && !gameOver && (
+          {gameState.playerMove && !gameState.playerCommitted && !gameState.gameOver && (
             <Button 
               className="mt-4 bg-bichi-orange hover:bg-bichi-brown text-white"
               onClick={handleCommitMove}
+              disabled={isLoading || !connected}
             >
-              Confirm Choice
+              {isLoading ? (
+                <>
+                  <span className="animate-spin inline-block h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></span>
+                  Confirming...
+                </>
+              ) : (
+                "Confirm Choice"
+              )}
             </Button>
           )}
           
-          {gameOver && (
+          {gameState.gameOver && (
             <Link to="/" className="mt-4">
               <Button className="bg-bichi-orange hover:bg-bichi-brown text-white">
                 Return to Lobby
@@ -259,13 +201,15 @@ const GameBoard = () => {
             <div className="inline-block bg-orange-200 rounded-full px-4 py-1 text-sm font-medium text-orange-700 mb-2">
               OPP
             </div>
-            <p className="text-bichi-brown">3j5n...9k2m</p>
+            <p className="text-bichi-brown">
+              {gameState.opponentPubkey ? shortenAddress(gameState.opponentPubkey) : 'Waiting...'}
+            </p>
           </div>
           
           <div className="flex-grow flex items-center justify-center">
-            {opponentCommitted ? (
+            {gameState.opponentCommitted ? (
               <div className="text-center">
-                {roundResult === null ? (
+                {gameState.roundResult === null ? (
                   <div className="text-bichi-brown">
                     <div className="bg-bichi-light-orange rounded-full p-3">
                       <span className="text-3xl">🔒</span>
@@ -274,8 +218,9 @@ const GameBoard = () => {
                   </div>
                 ) : (
                   <div className="text-center">
-                    <div className="text-5xl mb-2">{opponentMove === "rock" ? "👊" : opponentMove === "paper" ? "✋" : "✌️"}</div>
-                    <p className="text-bichi-brown capitalize">{opponentMove}</p>
+                    <div className="text-5xl mb-2">
+                      {gameState.opponentMove && <GameMove moveType={gameState.opponentMove} />}
+                    </div>
                   </div>
                 )}
               </div>

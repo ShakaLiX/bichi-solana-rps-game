@@ -1,32 +1,93 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useWallet } from '@solana/wallet-adapter-react';
+import { createTransferTransaction, ESCROW_PUBKEY, getBalance } from '@/lib/solana';
 
 const CreateGameForm = () => {
   const { toast } = useToast();
+  const { publicKey, signTransaction, connected } = useWallet();
   const [token] = useState("SOL");
   const [stakeAmount, setStakeAmount] = useState(0.1);
   const [isCreating, setIsCreating] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+
+  // Fetch wallet balance when connected
+  useEffect(() => {
+    if (connected && publicKey) {
+      getBalance(publicKey)
+        .then(balance => setWalletBalance(balance))
+        .catch(error => console.error('Error fetching balance:', error));
+    } else {
+      setWalletBalance(0);
+    }
+  }, [connected, publicKey]);
 
   const handleIncrement = () => {
-    setStakeAmount(prev => Math.min(prev + 0.1, 10));
+    setStakeAmount(prev => Math.min(prev + 0.1, walletBalance > 0 ? walletBalance - 0.01 : 10));
   };
 
   const handleDecrement = () => {
     setStakeAmount(prev => Math.max(prev - 0.1, 0.1));
   };
 
-  const handleCreateGame = () => {
-    setIsCreating(true);
-    // Simulate transaction delay
-    setTimeout(() => {
+  const handleCreateGame = async () => {
+    if (!publicKey || !signTransaction) {
       toast({
-        title: "Game Created!",
-        description: `Your game with ${stakeAmount} SOL stake is now available for others to join.`,
+        title: "Wallet Not Connected",
+        description: "Please connect your wallet to create a game.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (walletBalance < stakeAmount) {
+      toast({
+        title: "Insufficient Balance",
+        description: `You need at least ${stakeAmount} SOL to create this game.`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsCreating(true);
+
+    try {
+      // Create a transaction to transfer SOL to the escrow account
+      const transaction = await createTransferTransaction(
+        publicKey,
+        ESCROW_PUBKEY,
+        stakeAmount
+      );
+
+      // Sign the transaction
+      const signedTransaction = await signTransaction(transaction);
+
+      // In a real implementation, we would send the transaction here
+      // For now, we'll simulate this with a timeout
+      setTimeout(() => {
+        toast({
+          title: "Game Created!",
+          description: `Your game with ${stakeAmount} SOL stake is now available for others to join.`,
+        });
+        setIsCreating(false);
+      }, 1000);
+
+      // In a real implementation, we would broadcast the transaction:
+      // const connection = getConnection();
+      // const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+      // await connection.confirmTransaction(signature);
+
+    } catch (error) {
+      console.error('Transaction error:', error);
+      toast({
+        title: "Transaction Failed",
+        description: "Failed to create game. Please try again.",
+        variant: "destructive"
       });
       setIsCreating(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -65,6 +126,7 @@ const CreateGameForm = () => {
             <button 
               onClick={handleDecrement}
               className="h-12 w-12 rounded-l-lg bg-muted hover:bg-bichi-light-orange flex items-center justify-center text-lg font-bold border border-bichi-light-orange"
+              disabled={!connected}
             >
               −
             </button>
@@ -77,16 +139,19 @@ const CreateGameForm = () => {
             <button 
               onClick={handleIncrement}
               className="h-12 w-12 rounded-r-lg bg-muted hover:bg-bichi-light-orange flex items-center justify-center text-lg font-bold border border-bichi-light-orange"
+              disabled={!connected}
             >
               +
             </button>
           </div>
-          <p className="text-right text-sm text-muted-foreground mt-1">Balance: 5.24 SOL</p>
+          <p className="text-right text-sm text-muted-foreground mt-1">
+            Balance: {walletBalance.toFixed(2)} SOL
+          </p>
         </div>
         
         <Button 
           className="w-full bg-gradient-to-r from-bichi-orange to-bichi-light-orange hover:opacity-90 text-white py-6 flex items-center justify-center gap-2"
-          disabled={isCreating}
+          disabled={isCreating || !connected}
           onClick={handleCreateGame}
         >
           {isCreating ? (
@@ -101,7 +166,7 @@ const CreateGameForm = () => {
                 alt="Bichi Logo" 
                 className="h-5 w-5 object-contain" 
               />
-              Create Game
+              {connected ? "Create Game" : "Connect Wallet to Create"}
             </>
           )}
         </Button>
