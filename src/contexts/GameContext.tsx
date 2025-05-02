@@ -4,16 +4,16 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useNavigate } from 'react-router-dom';
 import { PublicKey } from '@solana/web3.js';
 import { useToast } from '@/hooks/use-toast';
+import supabase from '@/lib/supabase';
 import {
   recordMove,
   updateRoundAndResult,
-  updateGameState,
-  subscribeToGame
+  updateGameState
 } from '@/lib/supabase';
 import { createTransferTransaction, ESCROW_PUBKEY } from '@/lib/solana';
 
 type MoveType = 'rock' | 'paper' | 'scissors' | null;
-type Phase = 'waitingToCommit' | 'waitingToReveal' | 'showResult' | 'gameOver';
+type Phase = 'waitingToCommit' | 'showResult' | 'gameOver';
 
 interface GameState {
   id: string;
@@ -23,17 +23,32 @@ interface GameState {
   opponentScore: number;
   playerMove: MoveType;
   opponentMove: MoveType;
-  phase: Phase;
+  playerCommitted: boolean;
+  opponentCommitted: boolean;
   roundResult: 'win' | 'lose' | 'tie' | null;
+  isCreator: boolean;
+  playerPubkey: string | null;
+  opponentPubkey: string | null;
+  phase: Phase;
   winner: string | null;
 }
 
 const EMPTY: GameState = {
-  id: '', stake: 0, round: 1,
-  playerScore: 0, opponentScore: 0,
-  playerMove: null, opponentMove: null,
+  id: '',
+  stake: 0,
+  round: 1,
+  playerScore: 0,
+  opponentScore: 0,
+  playerMove: null,
+  opponentMove: null,
+  playerCommitted: false,
+  opponentCommitted: false,
+  roundResult: null,
+  isCreator: false,
+  playerPubkey: null,
+  opponentPubkey: null,
   phase: 'waitingToCommit',
-  roundResult: null, winner: null
+  winner: null
 };
 
 const GameContext = createContext<{
@@ -45,7 +60,8 @@ const GameContext = createContext<{
 export const useGame = () => useContext(GameContext);
 
 export const GameProvider: React.FC<{ children: React.ReactNode; gameId: string }> = ({
-  children, gameId
+  children,
+  gameId
 }) => {
   const { publicKey, sendTransaction } = useWallet();
   const { connection } = useConnection();
@@ -54,7 +70,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; gameId: string 
 
   const [state, setState] = useState<GameState>(EMPTY);
 
-  // Debug logging of phase, round, and score
+  // Debug logging
   useEffect(() => {
     console.log(
       '⏰ PHASE', state.phase,
@@ -64,110 +80,142 @@ export const GameProvider: React.FC<{ children: React.ReactNode; gameId: string 
     );
   }, [state]);
 
-  // Subscribe only to updates for this game
+  // Subscribe to moves and game_over events
   useEffect(() => {
-    const sub = subscribeToGame(gameId, payload => {
-      const d = payload.new;
-      const prev = state;
+    if (!gameId) return;
+    const channel = supabase
+      .channel(`game_moves_${gameId}`)
+      .on('broadcast', { event: 'game_move' }, ({ payload }) => {
+        const { round, move, wallet } = payload as any;
+        setState(prev => {
+          if (round !== prev.round) return prev;
+          if (wallet === prev.playerPubkey) return prev; // ignore our own
+          const updated = {
+            ...prev,
+            opponentMove: move as MoveType,
+            opponentCommitted: true
+          };
+          if (prev.playerCommitted && prev.playerMove) {
+            setTimeout(() => evaluateRound(prev.playerMove, move as MoveType), 500);
+          }
+          return updated;
+        });
+      })
+      .on('broadcast', { event: 'game_over' }, ({ payload }) => {
+        const winner = (payload as any).winner as string;
+        handleGameOver(winner);
+      })
+      .subscribe();
 
-      // 1) If completed, go to gameOver
-      if (d.status === 'completed' && prev.phase !== 'gameOver') {
-        setState(s => ({ ...s, phase: 'gameOver', winner: d.round_result }));
-        return;
+    return () => { channel.unsubscribe(); };
+  }, [gameId]);
+
+  // Commit local move
+  const commitMove = async () => {
+    if (!state.playerMove || state.playerCommitted || !publicKey) return;
+    setState(prev => ({ ...prev, playerCommitted: true }));
+    await supabase
+      .channel(`game_moves_${state.id}`)
+      .send({
+        type: 'broadcast',
+        event: 'game_move',
+        payload: {
+          round: state.round,
+          move: state.playerMove,
+          wallet: publicKey.toString()
+        }
+      });
+    toast({ title: 'Move Committed', description: 'Waiting for opponent...' });
+    // If opponent already in, evaluate
+    setState(prev => {
+      if (prev.opponentCommitted && prev.opponentMove) {
+        setTimeout(() => evaluateRound(prev.playerMove!, prev.opponentMove!), 500);
       }
+      return prev;
+    });
+  };
 
-      // 2) If current_round increased, reset for new round
-      if (d.current_round > prev.round) {
-        setState(s => ({
-          ...s,
-          round: d.current_round,
-          phase: 'waitingToCommit',
+  // Evaluate a round
+  const evaluateRound = (playerMove: MoveType, opponentMove: MoveType) => {
+    let result: 'win' | 'lose' | 'tie' = 'tie';
+    let ps = 0, os = 0;
+    if (playerMove === opponentMove) {
+      toast({ title: "It's a tie!", description: 'No points.' });
+    } else if (
+      (playerMove === 'rock' && opponentMove === 'scissors') ||
+      (playerMove === 'paper' && opponentMove === 'rock') ||
+      (playerMove === 'scissors' && opponentMove === 'paper')
+    ) {
+      result = 'win'; ps = 1;
+      toast({ title: 'You win this round!', description: `${playerMove} beats ${opponentMove}` });
+    } else {
+      result = 'lose'; os = 1;
+      toast({ title: 'You lose this round', description: `${opponentMove} beats ${playerMove}` });
+    }
+    setState(prev => ({
+      ...prev,
+      roundResult: result,
+      playerScore: prev.playerScore + ps,
+      opponentScore: prev.opponentScore + os,
+      phase: 'showResult'
+    }));
+
+    const newPS = state.playerScore + ps;
+    const newOS = state.opponentScore + os;
+
+    // End or advance
+    if (newPS === 2 || newOS === 2) {
+      const winnerAddr = newPS > newOS ? state.playerPubkey! : state.opponentPubkey!;
+      if (state.isCreator) setTimeout(() => handleGameOver(winnerAddr), 1500);
+    } else if (state.round === 3) {
+      console.log('Match tied after 3 rounds');
+      if (state.isCreator) {
+        supabase.channel(`game_moves_${state.id}`)
+          .send({ type: 'broadcast', event: 'game_over', payload: { winner: null } });
+      }
+    } else {
+      setTimeout(() => {
+        setState(prev => ({
+          ...prev,
+          round: prev.round + 1,
+          playerCommitted: false,
+          opponentCommitted: false,
           playerMove: null,
           opponentMove: null,
-          roundResult: null
+          roundResult: null,
+          phase: 'waitingToCommit'
         }));
-        return;
-      }
-
-      // 3) If both moves are in while waitingToReveal, reveal and update scores
-      if (
-        prev.phase === 'waitingToReveal' &&
-        d.player1_move != null &&
-        d.player2_move != null
-      ) {
-        const meIsP1 = d.creator_wallet === publicKey!.toString();
-        const pm = meIsP1 ? d.player1_move : d.player2_move;
-        const om = meIsP1 ? d.player2_move : d.player1_move;
-        let result: 'win' | 'lose' | 'tie' = 'tie';
-        if (pm !== om) {
-          result =
-            (pm === 'rock' && om === 'scissors') ||
-            (pm === 'paper' && om === 'rock') ||
-            (pm === 'scissors' && om === 'paper')
-              ? 'win'
-              : 'lose';
-        }
-        setState(s => ({
-          ...s,
-          playerMove: pm,
-          opponentMove: om,
-          roundResult: result,
-          playerScore: s.playerScore + (result === 'win' ? 1 : 0),
-          opponentScore: s.opponentScore + (result === 'lose' ? 1 : 0),
-          phase: 'showResult'
-        }));
-      }
-    });
-    return () => sub.unsubscribe();
-  }, [gameId, publicKey, state]);
-
-  // Advance rounds and handle payout
-  useEffect(() => {
-    if (state.phase === 'showResult') {
-      const t = setTimeout(() => {
-        const outcome =
-          state.roundResult === 'tie'
-            ? 'tie'
-            : state.roundResult === 'win'
-            ? 'player1_win'
-            : 'player2_win';
-        updateRoundAndResult(state.id, outcome, state.round + 1);
       }, 3000);
-      return () => clearTimeout(t);
     }
-    if (state.phase === 'gameOver') {
-      (async () => {
-        await updateGameState(state.id, {
-          status: 'completed',
-          round_result: state.winner!
-        });
-        const winnerKey = new PublicKey(state.winner!);
-        const tx = createTransferTransaction(
-          ESCROW_PUBKEY,
-          winnerKey,
-          state.stake * 2
-        );
-        const sig = await sendTransaction(tx, connection);
-        toast({ title: 'Payout', description: sig });
-        setTimeout(() => navigate('/'), 5000);
-      })();
-    }
-  }, [state.phase]);
+  };
 
+  // Handle final payout/game over
+  const handleGameOver = async (winnerAddr: string | null) => {
+    setState(prev => ({ ...prev, phase: 'gameOver', winner: winnerAddr }));
+    if (state.isCreator && winnerAddr && publicKey) {
+      await updateGameState(state.id, { status: 'completed', round_result: winnerAddr });
+      const tx = createTransferTransaction(ESCROW_PUBKEY, new PublicKey(winnerAddr), state.stake * 2);
+      const sig = await sendTransaction(tx, connection);
+      toast({ title: 'Payout', description: sig });
+      setTimeout(() => navigate('/'), 5000);
+    }
+  };
+
+  // Select a move
   const selectMove = (m: MoveType) => {
     if (state.phase !== 'waitingToCommit') return;
-    setState(s => ({ ...s, playerMove: m }));
+    setState(prev => ({ ...prev, playerMove: m }));
   };
 
-  const commitMove = async () => {
-    if (
-      state.phase !== 'waitingToCommit' ||
-      !state.playerMove ||
-      !publicKey
-    ) return;
-    await recordMove(state.id, publicKey.toString(), state.playerMove);
-    setState(s => ({ ...s, phase: 'waitingToReveal' }));
-  };
+  // Initialize context state on mount
+  useEffect(() => {
+    setState(prev => ({
+      ...prev,
+      id: gameId,
+      playerPubkey: publicKey?.toString() || null,
+      isCreator: !!publicKey && publicKey.toString() === prev.playerPubkey,
+    }));
+  }, [gameId, publicKey]);
 
   return (
     <GameContext.Provider value={{ state, selectMove, commitMove }}>
