@@ -1,26 +1,29 @@
+
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { LAMPORTS_PER_SOL, Connection, clusterApiUrl } from '@solana/web3.js';
+import { getBalance, shortenAddress } from '@/lib/solana';
 
 const WalletConnectButton = () => {
   const { toast } = useToast();
   const { publicKey, connected, disconnect } = useWallet();
   const [balance, setBalance] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Function to get the wallet balance
   useEffect(() => {
     let isMounted = true;
     
-    const getBalance = async () => {
+    const fetchBalance = async () => {
       if (publicKey) {
+        setIsLoading(true);
         try {
-          const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
-          const walletBalance = await connection.getBalance(publicKey);
+          const walletBalance = await getBalance(publicKey);
           if (isMounted) {
-            setBalance(walletBalance / LAMPORTS_PER_SOL);
+            console.log("Wallet balance fetched:", walletBalance);
+            setBalance(walletBalance);
           }
         } catch (error) {
           console.error('Failed to fetch balance:', error);
@@ -28,12 +31,16 @@ const WalletConnectButton = () => {
             title: "Balance Error",
             description: "Failed to fetch wallet balance",
           });
+        } finally {
+          if (isMounted) {
+            setIsLoading(false);
+          }
         }
       }
     };
 
-    if (connected) {
-      getBalance();
+    if (connected && publicKey) {
+      fetchBalance();
       // Show toast for successful connection
       toast({
         title: "Wallet Connected",
@@ -57,13 +64,51 @@ const WalletConnectButton = () => {
     });
   };
 
+  const refreshBalance = async () => {
+    if (publicKey) {
+      setIsLoading(true);
+      try {
+        const walletBalance = await getBalance(publicKey);
+        setBalance(walletBalance);
+        toast({
+          title: "Balance Updated",
+          description: "Your wallet balance has been refreshed",
+        });
+      } catch (error) {
+        console.error('Failed to refresh balance:', error);
+        toast({
+          title: "Balance Error",
+          description: "Failed to refresh wallet balance",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
   if (connected && publicKey) {
     return (
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
           <div className="text-sm font-medium text-right">
-            <p className="text-bichi-brown">{publicKey.toString().slice(0, 4) + '...' + publicKey.toString().slice(-4)}</p>
-            <p className="font-bold">{balance.toFixed(2)} SOL</p>
+            <p className="text-bichi-brown">{shortenAddress(publicKey.toString())}</p>
+            <div className="flex items-center gap-1">
+              <p className="font-bold">{isLoading ? "Loading..." : `${balance.toFixed(2)} SOL`}</p>
+              <Button 
+                variant="ghost" 
+                size="icon"
+                className="h-4 w-4 p-0"
+                onClick={refreshBalance}
+                disabled={isLoading}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                  <path d="M21 3v5h-5"></path>
+                  <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+                  <path d="M8 16H3v5"></path>
+                </svg>
+              </Button>
+            </div>
           </div>
           <Button 
             variant="outline" 

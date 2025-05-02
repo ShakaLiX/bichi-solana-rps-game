@@ -17,7 +17,8 @@ export const getConnection = (network = WalletAdapterNetwork.Devnet) => {
 export const getBalance = async (publicKey: PublicKey): Promise<number> => {
   const connection = getConnection();
   try {
-    const balance = await connection.getBalance(publicKey);
+    // Make sure we're using the latest commitment level for accurate balance
+    const balance = await connection.getBalance(publicKey, 'confirmed');
     return balance / LAMPORTS_PER_SOL;
   } catch (error) {
     console.error('Error getting balance:', error);
@@ -41,7 +42,7 @@ export const createTransferTransaction = async (
   );
   
   // Get the latest blockhash
-  const { blockhash } = await connection.getLatestBlockhash();
+  const { blockhash } = await connection.getLatestBlockhash('confirmed');
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = fromPubkey;
   
