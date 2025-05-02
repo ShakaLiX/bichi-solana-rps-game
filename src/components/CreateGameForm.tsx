@@ -19,27 +19,23 @@ const CreateGameForm: React.FC<Props> = ({ onCreated }) => {
   const handleCreate = async () => {
     if (!publicKey || stake <= 0) return;
     setLoading(true);
-
     try {
-      // 1️⃣ Send stake to escrow account
+      // 1️⃣ Send SOL to escrow
       const tx = await createTransferTransaction(
         ESCROW_PUBKEY,
-        new PublicKey(ESCROW_PUBKEY), // your escrow address
+        new PublicKey(ESCROW_PUBKEY),
         stake
       );
       const sig = await sendTransaction(tx, connection);
       await connection.confirmTransaction(sig);
 
-      // 2️⃣ Record the game in Supabase
+      // 2️⃣ Record game in Supabase
       const record = await createGameRecord(publicKey.toString(), stake);
-      if (record) {
-        onCreated(record.id);
-      } else {
-        alert('Failed to record game. Try again.');
-      }
+      if (record) onCreated(record.id);
+      else alert('Failed to create game record');
     } catch (err) {
-      console.error('Game creation error:', err);
-      alert('Error creating game. See console.');
+      console.error(err);
+      alert('Error creating game—see console');
     } finally {
       setLoading(false);
     }
@@ -56,10 +52,7 @@ const CreateGameForm: React.FC<Props> = ({ onCreated }) => {
         placeholder="Stake (SOL)"
         className="w-32"
       />
-      <Button
-        onClick={handleCreate}
-        disabled={!publicKey || loading}
-      >
+      <Button onClick={handleCreate} disabled={!publicKey || loading}>
         {loading ? 'Creating…' : 'Create Game'}
       </Button>
     </div>

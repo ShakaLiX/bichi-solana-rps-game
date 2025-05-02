@@ -1,13 +1,13 @@
 // src/pages/GamePage.tsx
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import GameBoard from '@/components/GameBoard';
-import { GameProvider } from '@/contexts/GameContext';
 import { fetchGameData, joinGameRecord } from '@/lib/supabase';
-import { useWallet } from '@solana/wallet-adapter-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { GameProvider } from '@/contexts/GameContext';
 
 interface GameData {
   id: string;
@@ -26,7 +26,7 @@ const GamePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
 
-  // 1️⃣ Load game on mount
+  // Load game once
   useEffect(() => {
     if (!gameId) return;
     (async () => {
@@ -40,26 +40,23 @@ const GamePage: React.FC = () => {
     })();
   }, [gameId, navigate]);
 
-  // 2️⃣ Handle join
+  // Join handler
   const handleJoin = async () => {
     if (!publicKey || !gameId) return;
     setJoining(true);
-    const success = await joinGameRecord(gameId, publicKey.toString());
+    const ok = await joinGameRecord(gameId, publicKey.toString());
     setJoining(false);
-    if (success) {
-      // Refresh the page so that game.status === 'joined'
-      const updated = await fetchGameData(gameId);
-      setGame(updated);
+    if (ok) {
+      const refreshed = await fetchGameData(gameId);
+      setGame(refreshed);
     } else {
       alert('Failed to join. Try again.');
     }
   };
 
-  if (loading) {
-    return <p className="p-8">Loading game…</p>;
-  }
+  if (loading) return <p className="p-8">Loading game…</p>;
 
-  // 3️⃣ If still open, show Join button
+  // If game is still open, show Join UI
   if (game!.status === 'open') {
     return (
       <div className="p-8">
@@ -69,7 +66,7 @@ const GamePage: React.FC = () => {
           <AlertDescription>
             Created by <strong>{game!.creator_wallet}</strong><br/>
             Stake: {game!.stake_amount} SOL<br/>
-            Waiting for someone to join…
+            Waiting for another player…
           </AlertDescription>
         </Alert>
         <div className="mt-6">
@@ -81,7 +78,7 @@ const GamePage: React.FC = () => {
     );
   }
 
-  // 4️⃣ Otherwise start the game
+  // Otherwise, both players are in—start the GameProvider/Board
   return (
     <GameProvider gameId={gameId!}>
       <GameBoard />
