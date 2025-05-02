@@ -39,18 +39,25 @@ export const createTransferTransaction = async (
   amount: number
 ): Promise<Transaction> => {
   const connection = getConnection();
-  const transaction = new Transaction().add(
-    SystemProgram.transfer({
-      fromPubkey,
-      toPubkey,
-      lamports: amount * LAMPORTS_PER_SOL
-    })
-  );
   
-  // Get the latest blockhash
-  const { blockhash } = await connection.getLatestBlockhash('processed');
+  // Create the instruction for transferring SOL
+  const transferInstruction = SystemProgram.transfer({
+    fromPubkey,
+    toPubkey,
+    lamports: Math.round(amount * LAMPORTS_PER_SOL)  // Convert SOL to lamports and ensure it's an integer
+  });
+  
+  // Create a new transaction and add the transfer instruction
+  const transaction = new Transaction().add(transferInstruction);
+  
+  // Get the latest blockhash for transaction validity
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
   transaction.recentBlockhash = blockhash;
+  transaction.lastValidBlockHeight = lastValidBlockHeight;
   transaction.feePayer = fromPubkey;
+  
+  console.log("Transaction created with blockhash:", blockhash);
+  console.log("Last valid block height:", lastValidBlockHeight);
   
   return transaction;
 };

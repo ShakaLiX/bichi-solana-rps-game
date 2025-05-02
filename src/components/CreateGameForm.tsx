@@ -3,11 +3,14 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useWallet } from '@solana/wallet-adapter-react';
+import { useConnection } from '@solana/wallet-adapter-react';
+import { Transaction } from '@solana/web3.js';
 import { createTransferTransaction, ESCROW_PUBKEY, getBalance } from '@/lib/solana';
 
 const CreateGameForm = () => {
   const { toast } = useToast();
-  const { publicKey, signTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, sendTransaction, connected } = useWallet();
+  const { connection } = useConnection();
   const [token] = useState("SOL");
   const [stakeAmount, setStakeAmount] = useState(0.1);
   const [isCreating, setIsCreating] = useState(false);
@@ -63,7 +66,7 @@ const CreateGameForm = () => {
   };
 
   const handleCreateGame = async () => {
-    if (!publicKey || !signTransaction) {
+    if (!publicKey || !signTransaction || !sendTransaction) {
       toast({
         title: "Wallet Not Connected",
         description: "Please connect your wallet to create a game.",
@@ -81,51 +84,68 @@ const CreateGameForm = () => {
       return;
     }
 
+    console.log("Creating game with stake:", stakeAmount, "SOL");
     setIsCreating(true);
 
     try {
-      console.log("Creating game with stake:", stakeAmount, "SOL");
-      
       // Create a transaction to transfer SOL to the escrow account
+      console.log("Creating transaction for", stakeAmount, "SOL to", ESCROW_PUBKEY.toString());
       const transaction = await createTransferTransaction(
         publicKey,
         ESCROW_PUBKEY,
         stakeAmount
       );
-
-      // Sign the transaction
-      const signedTransaction = await signTransaction(transaction);
-      console.log("Transaction signed successfully");
-
-      // In a real implementation, we would send the transaction here
-      // For now, we'll simulate this with a timeout
-      setTimeout(() => {
-        toast({
-          title: "Game Created!",
-          description: `Your game with ${stakeAmount} SOL stake is now available for others to join.`,
-        });
-        setIsCreating(false);
-        
-        // Refresh balance after creating game
-        if (publicKey) {
-          getBalance(publicKey)
-            .then(balance => setWalletBalance(balance))
-            .catch(error => console.error('Error fetching balance after game creation:', error));
-        }
-      }, 1000);
-
-      // In a real implementation, we would broadcast the transaction:
-      // const connection = getConnection();
-      // const signature = await connection.sendRawTransaction(signedTransaction.serialize());
-      // await connection.confirmTransaction(signature);
-
+      
+      console.log("Transaction created. Sending to wallet for approval...");
+      
+      // Send the transaction directly using sendTransaction from useWallet
+      const signature = await sendTransaction(transaction, connection);
+      console.log("Transaction sent! Signature:", signature);
+      
+      // Confirm the transaction
+      console.log("Confirming transaction...");
+      const confirmation = await connection.confirmTransaction(signature, 'confirmed');
+      console.log("Transaction confirmation:", confirmation);
+      
+      if (confirmation.value.err) {
+        throw new Error(`Transaction failed: ${confirmation.value.err.toString()}`);
+      }
+      
+      toast({
+        title: "Game Created!",
+        description: `Your game with ${stakeAmount} SOL stake is now available for others to join.`,
+      });
+      
+      // Refresh balance after creating game
+      if (publicKey) {
+        console.log("Refreshing balance after transaction");
+        getBalance(publicKey)
+          .then(balance => {
+            console.log("New balance after transaction:", balance);
+            setWalletBalance(balance);
+          })
+          .catch(error => console.error('Error fetching balance after game creation:', error));
+      }
     } catch (error) {
       console.error('Transaction error:', error);
+      
+      // Provide more specific error messages based on error type
+      let errorMessage = "Failed to create game. Please try again.";
+      
+      if (error.message?.includes("User rejected")) {
+        errorMessage = "Transaction was cancelled by user.";
+      } else if (error.message?.includes("insufficient funds")) {
+        errorMessage = "Insufficient funds for transaction. Please check your balance.";
+      } else if (error.message?.includes("blockhash")) {
+        errorMessage = "Transaction timed out. Please try again.";
+      }
+      
       toast({
         title: "Transaction Failed",
-        description: "Failed to create game. Please try again.",
+        description: errorMessage,
         variant: "destructive"
       });
+    } finally {
       setIsCreating(false);
     }
   };
