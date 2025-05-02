@@ -5,6 +5,7 @@ import CreateGameForm from "@/components/CreateGameForm";
 import GamesList from "@/components/GamesList";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
+import { supabaseUrl, supabaseAnonKey } from "@/lib/supabase";
 
 const LobbyPage = () => {
   const { toast } = useToast();
