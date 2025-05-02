@@ -1,3 +1,4 @@
+
 // Use the Supabase client that Lovable has already configured
 import { supabase } from '@/integrations/supabase/client';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
@@ -112,10 +113,13 @@ export const updateGameState = async (
   try {
     console.log('Updating game state in Supabase:', { gameId, updates });
     
+    // Create update object without last_update field
+    const { last_update, ...updateData } = updates;
+    
     const { error } = await supabase
       .from('games')
       .update({
-        ...updates,
+        ...updateData,
         last_update: new Date().toISOString()
       })
       .eq('id', gameId);
@@ -217,6 +221,29 @@ export const subscribeToGame = (
       },
       (payload) => {
         console.log('Game update detected:', payload);
+        callback(payload as RealtimePostgresChangesPayload<GameRecord>);
+      }
+    )
+    .subscribe();
+};
+
+// Subscribe to all games (for lobby updates)
+export const subscribeToGames = (
+  callback: (payload: RealtimePostgresChangesPayload<GameRecord>) => void
+) => {
+  console.log('Setting up realtime subscription for all games');
+  
+  return supabase
+    .channel('games-channel')
+    .on(
+      'postgres_changes',
+      { 
+        event: '*', 
+        schema: 'public', 
+        table: 'games'
+      },
+      (payload) => {
+        console.log('Games update detected:', payload);
         callback(payload as RealtimePostgresChangesPayload<GameRecord>);
       }
     )

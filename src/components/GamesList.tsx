@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -6,6 +7,7 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { createTransferTransaction, ESCROW_PUBKEY, shortenAddress } from '@/lib/solana';
 import { fetchOpenGames, subscribeToGames, joinGame, GameRecord } from '@/lib/supabase';
 import { format } from 'date-fns';
+import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // Convert Supabase GameRecord to our UI GameData format
 const recordToGameData = (record: GameRecord): GameData => {
@@ -63,7 +65,7 @@ const GamesList = () => {
     loadGames();
     
     // Set up real-time subscription for updates
-    const subscription = subscribeToGames((payload) => {
+    const subscription = subscribeToGames((payload: RealtimePostgresChangesPayload<GameRecord>) => {
       console.log('Real-time game update received:', payload);
       
       if (payload.eventType === 'INSERT' && payload.new.status === 'open') {

@@ -5,7 +5,7 @@ import Header from "@/components/Header";
 import CreateGameForm from "@/components/CreateGameForm";
 import GamesList from "@/components/GamesList";
 import { useToast } from "@/hooks/use-toast";
-import supabase, { subscribeToGames } from "@/lib/supabase";
+import supabase, { subscribeToGames, RealtimePostgresChangesPayload, GameRecord } from "@/lib/supabase";
 import { useWallet } from "@solana/wallet-adapter-react";
 
 const LobbyPage = () => {
@@ -20,7 +20,7 @@ const LobbyPage = () => {
     const walletAddress = publicKey.toString();
     console.log('Setting up game subscription for wallet:', walletAddress);
     
-    const subscription = subscribeToGames((payload) => {
+    const subscription = subscribeToGames((payload: RealtimePostgresChangesPayload<GameRecord>) => {
       // If a game changed to 'joined' status and current user is either creator or joiner
       if (payload.eventType === 'UPDATE' && 
           payload.new.status === 'joined' && 

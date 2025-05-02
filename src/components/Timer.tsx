@@ -13,7 +13,10 @@ const Timer = ({ seconds, onComplete }: TimerProps) => {
   
   // Reset timer when shouldResetTimer changes or round changes
   useEffect(() => {
-    console.log("Timer reset triggered by game state");
+    console.log("Timer reset triggered by game state", {
+      round: gameState.round,
+      shouldResetTimer: gameState.shouldResetTimer
+    });
     setTimeLeft(seconds);
   }, [gameState.shouldResetTimer, gameState.round, seconds]);
   

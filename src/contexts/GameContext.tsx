@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -227,10 +226,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const subscribeToGameUpdates = (gameId: string) => {
     console.log('Setting up realtime subscription for game updates');
     
-    supabaseSubscription.current = subscribeToGame(gameId, (payload) => {
+    supabaseSubscription.current = subscribeToGame(gameId, (payload: RealtimePostgresChangesPayload<GameRecord>) => {
       if (!payload.new) return;
 
-      const gameData = payload.new;
+      const gameData = payload.new as GameRecord;
       const isCreator = gameState.isCreator;
       
       console.log('Game update received:', gameData);
@@ -268,6 +267,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         }
 
+        // Ensure draw comparison works correctly
+        const isDrawResult = gameData.round_result === "tie";
+
         return {
           ...prev,
           round: gameData.current_round || prev.round,
@@ -276,7 +278,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           playerCommitted,
           opponentCommitted,
           roundResult: gameData.round_result as "win" | "lose" | "tie" | null || prev.roundResult,
-          shouldResetTimer: roundChanged || (isDraw !== prev.roundResult === "tie")
+          shouldResetTimer: roundChanged || (isDraw && !isDrawResult)
         };
       });
       
