@@ -5,7 +5,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { Transaction } from '@solana/web3.js';
-import { createTransferTransaction, ESCROW_PUBKEY, getBalance } from '@/lib/solana';
+import { createTransferTransaction, ESCROW_PUBKEY, getBalance, shortenAddress } from '@/lib/solana';
+import { addGame } from './GamesList';
+import { format } from 'date-fns';
 
 const CreateGameForm = () => {
   const { toast } = useToast();
@@ -110,6 +112,21 @@ const CreateGameForm = () => {
       if (confirmation.value.err) {
         throw new Error(`Transaction failed: ${confirmation.value.err.toString()}`);
       }
+      
+      // Create a new game object
+      const newGame = {
+        id: signature.slice(0, 8), // Use part of the transaction signature as the game ID
+        creator: shortenAddress(publicKey.toBase58()),
+        creatorPubkey: publicKey.toBase58(),
+        stake: stakeAmount,
+        timestamp: format(new Date(), 'hh:mm a')
+      };
+      
+      console.log("Creating new game object:", newGame);
+      
+      // Add the new game to our games store
+      const updatedGames = addGame(newGame);
+      console.log("Updated games list:", updatedGames);
       
       toast({
         title: "Game Created!",

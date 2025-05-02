@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -22,6 +21,16 @@ const MOCK_GAMES: GameData[] = [
   { id: "3", creator: "2k8m...7j3n", creatorPubkey: "2k8m7j3nQsFgD9Hr1TbAyZvP5wX6C4LjKoN8E2Rp", stake: 0.2, timestamp: "01:50 PM" },
 ];
 
+// Create a global set of games to be shared across components
+export let gamesStore = [...MOCK_GAMES];
+
+// Function to add a new game to the store
+export const addGame = (game: GameData) => {
+  console.log("Adding game to store:", game);
+  gamesStore = [game, ...gamesStore];
+  return gamesStore;
+};
+
 type FilterType = "ALL" | "SOL" | "USDC" | "RAY";
 
 const GamesList = () => {
@@ -29,22 +38,21 @@ const GamesList = () => {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterType>("ALL");
   const [joiningId, setJoiningId] = useState<string | null>(null);
-  const [games, setGames] = useState<GameData[]>(MOCK_GAMES);
+  const [games, setGames] = useState<GameData[]>(gamesStore);
   const { publicKey, signTransaction, connected } = useWallet();
 
   // In a real implementation, we would fetch games from the blockchain
   useEffect(() => {
-    // Simulating a blockchain query with a timeout
+    // Function to fetch games
     const fetchGames = async () => {
-      // Here we would query the blockchain for active games
-      // For now, we'll use our mock data
-      setGames(MOCK_GAMES);
+      console.log("Fetching games from store...");
+      setGames([...gamesStore]);
     };
 
     fetchGames();
     
-    // Set up polling to refresh games (simulating real-time updates)
-    const interval = setInterval(fetchGames, 30000);
+    // Set up polling to refresh games
+    const interval = setInterval(fetchGames, 5000); // Poll every 5 seconds
     
     return () => clearInterval(interval);
   }, []);
@@ -104,7 +112,7 @@ const GamesList = () => {
     }
   };
 
-  // Filter games based on selected filter (in a real app, this would be done at query time)
+  // Filter games based on selected filter
   const filteredGames = filter === "ALL" ? games : games.filter(game => filter === "SOL");
 
   return (
