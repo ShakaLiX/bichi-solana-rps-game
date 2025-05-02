@@ -85,6 +85,13 @@ const GameBoard = () => {
                 </div>
                 <p className="mt-2 text-bichi-brown">Move locked in</p>
               </div>
+            ) : gameState.playerMove ? (
+              <div className="text-center">
+                <div className="text-5xl mb-2">
+                  <GameMove moveType={gameState.playerMove} />
+                </div>
+                <p className="mt-2 text-bichi-brown">Confirm your choice</p>
+              </div>
             ) : (
               <div className="text-center text-bichi-brown">
                 <p>Waiting for your move...</p>

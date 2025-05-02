@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -13,6 +12,7 @@ import supabase, {
   updateGameState,
   type RealtimePostgresChangesPayload
 } from "@/lib/supabase";
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { shortenAddress, createTransferTransaction, ESCROW_PUBKEY } from '@/lib/solana';
 
 type MoveType = "rock" | "paper" | "scissors" | null;
@@ -100,6 +100,20 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   }, []);
 
+  // Clear moves and reset timer when round changes
+  const clearMovesAndResetTimer = useCallback(() => {
+    console.log('Clearing moves and resetting timer');
+    setGameState(prev => ({
+      ...prev,
+      playerMove: null,
+      opponentMove: null,
+      playerCommitted: false,
+      opponentCommitted: false,
+      roundResult: null,
+      shouldResetTimer: !prev.shouldResetTimer // Toggle to trigger timer reset
+    }));
+  }, []);
+
   // Setup timeout for moves - modified to handle timeout logic correctly
   useEffect(() => {
     if (!gameState.id || gameState.gameOver) {
@@ -118,23 +132,19 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // Handle timeout based on committed moves
       if (gameState.playerCommitted && !gameState.opponentCommitted) {
-        // Only opponent didn't commit - player wins round
-        if (gameState.isCreator) {
-          console.log('TIMEOUT: Player committed but opponent did not - player wins round');
-          handlePlayerWinsRound();
-        }
+        // Only player committed - player wins round
+        console.log('TIMEOUT: Player committed but opponent did not - player wins round');
+        handlePlayerWinsRound();
       } 
       else if (!gameState.playerCommitted && gameState.opponentCommitted) {
-        // Only player didn't commit - opponent wins round
-        if (gameState.isCreator) {
-          console.log('TIMEOUT: Opponent committed but player did not - opponent wins round');
-          handleOpponentWinsRound();
-        }
+        // Only opponent committed - opponent wins round
+        console.log('TIMEOUT: Opponent committed but player did not - opponent wins round');
+        handleOpponentWinsRound();
       } 
       else if (!gameState.playerCommitted && !gameState.opponentCommitted) {
         // Neither player committed - reset round timer
         console.log('TIMEOUT: No players committed moves - resetting round timer');
-        resetRoundTimer();
+        clearMovesAndResetTimer(); // Clear moves and reset timer
         toast({
           title: "Round reset",
           description: "No moves were made. Try again!",
@@ -148,10 +158,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         timeoutRef.current = null;
       }
     };
-  }, [gameState.round, gameState.gameOver, gameState.id, gameState.playerCommitted, gameState.opponentCommitted]);
+  }, [gameState.round, gameState.gameOver, gameState.id, gameState.playerCommitted, gameState.opponentCommitted, clearMovesAndResetTimer, toast]);
 
   // Helper functions for timeout handling
-  const handlePlayerWinsRound = async () => {
+  const handlePlayerWinsRound = useCallback(async () => {
     if (!gameState.id) return;
     
     setGameState(prev => {
@@ -168,11 +178,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       // Continue to next round
-      updateRoundAndResult(
-        prev.id!,
-        'player1_win',
-        prev.round + 1
-      );
+      if (prev.isCreator) {
+        updateRoundAndResult(
+          prev.id!,
+          'player1_win',
+          prev.round + 1
+        );
+      }
       
       return {
         ...prev,
@@ -185,9 +197,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       title: "Round won by timeout!", 
       description: "Your opponent didn't make a move in time."
     });
-  };
+  }, [gameState.id, toast]);
   
-  const handleOpponentWinsRound = async () => {
+  const handleOpponentWinsRound = useCallback(async () => {
     if (!gameState.id) return;
     
     setGameState(prev => {
@@ -204,11 +216,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       // Continue to next round
-      updateRoundAndResult(
-        prev.id!,
-        'player2_win',
-        prev.round + 1
-      );
+      if (prev.isCreator) {
+        updateRoundAndResult(
+          prev.id!,
+          'player2_win',
+          prev.round + 1
+        );
+      }
       
       return {
         ...prev,
@@ -221,7 +235,86 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       title: "Round lost by timeout!", 
       description: "You didn't make a move in time."
     });
-  };
+  }, [gameState.id, toast]);
+
+  // Handle game over and payout to winner
+  const handleGameOver = useCallback(async (winnerAddress: string | null) => {
+    if (!gameState.id || !winnerAddress) return;
+    
+    console.log('Game over, winner is:', winnerAddress);
+    
+    // Update game state
+    setGameState(prev => ({
+      ...prev,
+      gameOver: true,
+      winner: winnerAddress
+    }));
+    
+    // Only creator performs payout to avoid duplicate transactions
+    if (gameState.isCreator && publicKey && sendTransaction && connection) {
+      try {
+        console.log('Processing payout to winner:', winnerAddress);
+        
+        // Update game status in Supabase
+        await updateGameState(gameState.id, { 
+          status: 'completed',
+          round_result: winnerAddress
+        });
+        
+        // Calculate total payout (stake amount * 2)
+        const totalPayout = gameState.stake * 2;
+        
+        // Create transaction to transfer from escrow to winner
+        const winnerPublicKey = new PublicKey(winnerAddress);
+        
+        // Send transaction to transfer funds from escrow to winner
+        const transaction = await createTransferTransaction(
+          ESCROW_PUBKEY,
+          winnerPublicKey,
+          totalPayout
+        );
+        
+        // Sign and send transaction
+        const signature = await sendTransaction(transaction, connection);
+        console.log('Payout transaction sent:', signature);
+        
+        // Wait for confirmation
+        const confirmation = await connection.confirmTransaction(signature);
+        console.log('Payout transaction confirmed:', confirmation);
+        
+      } catch (error) {
+        console.error('Error processing payout:', error);
+        toast({
+          title: "Payout Failed",
+          description: "Error processing winner payout. Please contact support.",
+          variant: "destructive"
+        });
+      }
+    }
+    
+    // Determine if current player won
+    const playerWon = winnerAddress === gameState.playerPubkey;
+    
+    // Show toast for game result
+    if (playerWon) {
+      toast({
+        title: "🎉 You won the match!",
+        description: `${gameState.stake * 2} SOL has been sent to your wallet.`,
+        duration: 5000,
+      });
+    } else {
+      toast({
+        title: "Game Over",
+        description: "You lost the match. Better luck next time!",
+        duration: 5000,
+      });
+    }
+    
+    // Return to lobby after delay
+    setTimeout(() => {
+      navigate('/');
+    }, 5000);
+  }, [gameState.id, gameState.isCreator, gameState.playerPubkey, gameState.stake, connection, navigate, publicKey, sendTransaction, toast]);
 
   // Load game data from Supabase
   useEffect(() => {
@@ -311,36 +404,40 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [gameId, publicKey, navigate, toast]);
 
-  // Subscribe to game updates using Supabase Realtime
-  const subscribeToGameUpdates = (gameId: string) => {
+  // Subscribe to game updates using Supabase Realtime - FIXED to preserve player's move
+  const subscribeToGameUpdates = useCallback((gameId: string) => {
     console.log('Setting up realtime subscription for game updates');
     
     supabaseSubscription.current = subscribeToGame(gameId, (payload: RealtimePostgresChangesPayload<GameRecord>) => {
       if (!payload.new) return;
 
       const gameData = payload.new as GameRecord;
-      const isCreator = gameState.isCreator;
       
       console.log('Game update received:', gameData);
 
       // Update local state based on database changes
       setGameState(prev => {
-        // Extract player and opponent moves based on creator status
-        const playerMove = isCreator 
-          ? (gameData.player1_move as MoveType) 
-          : (gameData.player2_move as MoveType);
+        const isCreator = prev.isCreator;
+        
+        // Only update opponent's move and commitment status
+        // Do NOT overwrite player's own move unless round changes
         const opponentMove = isCreator 
           ? (gameData.player2_move as MoveType) 
           : (gameData.player1_move as MoveType);
-        const playerCommitted = isCreator 
-          ? !!gameData.player1_move 
-          : !!gameData.player2_move;
         const opponentCommitted = isCreator 
           ? !!gameData.player2_move 
           : !!gameData.player1_move;
         
+        // Store current player's move and commitment status to preserve it
+        const currentPlayerMove = prev.playerMove;
+        const currentPlayerCommitted = prev.playerCommitted;
+        
         // Detect round change
         const roundChanged = gameData.current_round !== prev.round;
+        
+        // Detect if we've received a draw result
+        const isDrawResult = gameData.round_result === "tie";
+        
         if (roundChanged) {
           console.log('ROUND RESET: Moving to round', gameData.current_round);
           
@@ -349,34 +446,45 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
             clearTimeout(timeoutRef.current);
             timeoutRef.current = null;
           }
+          
+          // On round change, we DO want to clear player and opponent moves
+          return {
+            ...prev,
+            round: gameData.current_round || prev.round,
+            playerMove: null, // Clear player move
+            opponentMove: null, // Clear opponent move
+            playerCommitted: false, // Reset commitment
+            opponentCommitted: false, // Reset commitment
+            roundResult: null, // Clear round result
+            shouldResetTimer: !prev.shouldResetTimer // Toggle to reset timer
+          };
         }
-
-        // Both players have committed moves, check for result
-        const bothCommitted = playerCommitted && opponentCommitted;
         
-        // Check for a draw
-        const isDraw = bothCommitted && playerMove === opponentMove;
-        if (isDraw) {
-          console.log('DRAW DETECTED: Both players chose', playerMove);
-          toast({
-            title: "It's a draw!",
-            description: `Both players chose ${playerMove}. Next round starting...`,
-            duration: 3000,
-          });
+        // For draw results, clear both moves and reset timer
+        if (isDrawResult && prev.roundResult !== "tie") {
+          console.log('DRAW DETECTED: Both players chose the same move');
+          
+          // Return updated state with both moves cleared
+          return {
+            ...prev,
+            playerMove: null,
+            opponentMove: null,
+            playerCommitted: false,
+            opponentCommitted: false,
+            roundResult: "tie",
+            shouldResetTimer: !prev.shouldResetTimer
+          };
         }
-
-        // Ensure draw comparison works correctly
-        const isDrawResult = gameData.round_result === "tie";
-
+        
+        // For normal updates (not round change or draw), preserve player's move
+        // Only update opponent's move and round result if provided
         return {
           ...prev,
-          round: gameData.current_round || prev.round,
-          playerMove,
-          opponentMove,
-          playerCommitted,
-          opponentCommitted,
-          roundResult: gameData.round_result as "win" | "lose" | "tie" | null || prev.roundResult,
-          shouldResetTimer: roundChanged || (isDraw && !isDrawResult)
+          playerMove: currentPlayerMove, // Preserve player's move
+          opponentMove: opponentMove, // Update opponent's move
+          playerCommitted: currentPlayerCommitted, // Preserve player's commitment
+          opponentCommitted: opponentCommitted, // Update opponent's commitment
+          roundResult: gameData.round_result as "win" | "lose" | "tie" | null || prev.roundResult
         };
       });
       
@@ -386,20 +494,20 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         handleGameOver(gameData.round_result || null);
       }
     });
-  };
+  }, [handleGameOver]);
 
   // Select a move
-  const selectMove = (move: MoveType) => {
+  const selectMove = useCallback((move: MoveType) => {
     if (!gameState.playerCommitted && !gameState.gameOver) {
       setGameState(prev => ({
         ...prev,
         playerMove: move
       }));
     }
-  };
+  }, [gameState.playerCommitted, gameState.gameOver]);
 
   // Commit move and update database
-  const commitMove = async () => {
+  const commitMove = useCallback(async () => {
     if (!gameState.playerMove || gameState.playerCommitted || gameState.gameOver || !gameState.id || !gameState.playerPubkey) return;
     
     setIsLoading(true);
@@ -446,7 +554,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [gameState.playerMove, gameState.playerCommitted, gameState.gameOver, gameState.id, gameState.playerPubkey, gameState.isCreator, toast]);
 
   // Check if both players have committed moves and evaluate round
   useEffect(() => {
@@ -502,6 +610,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           gameState.round + 1
         );
       }
+      
+      // Clear moves and reset timer for draw
+      clearMovesAndResetTimer();
     } else if (
       (gameState.playerMove === "rock" && gameState.opponentMove === "scissors") ||
       (gameState.playerMove === "paper" && gameState.opponentMove === "rock") ||
@@ -588,94 +699,27 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         description: `${gameState.opponentMove} beats ${gameState.playerMove}` 
       });
     }
-    
-    // Reset round timer
-    resetRoundTimer();
-  };
-  
-  // Handle game over and payout to winner
-  const handleGameOver = async (winnerAddress: string | null) => {
-    if (!gameState.id || !winnerAddress) return;
-    
-    console.log('Game over, winner is:', winnerAddress);
-    
-    // Update game state
-    setGameState(prev => ({
-      ...prev,
-      gameOver: true,
-      winner: winnerAddress
-    }));
-    
-    // Only creator performs payout to avoid duplicate transactions
-    if (gameState.isCreator && publicKey && sendTransaction && connection) {
-      try {
-        console.log('Processing payout to winner:', winnerAddress);
-        
-        // Update game status in Supabase
-        await updateGameState(gameState.id, { 
-          status: 'completed',
-          round_result: winnerAddress
-        });
-        
-        // Calculate total payout (stake amount * 2)
-        const totalPayout = gameState.stake * 2;
-        
-        // Create transaction to transfer from escrow to winner
-        const winnerPublicKey = new PublicKey(winnerAddress);
-        
-        // Send transaction to transfer funds from escrow to winner
-        const transaction = await createTransferTransaction(
-          ESCROW_PUBKEY,
-          winnerPublicKey,
-          totalPayout
-        );
-        
-        // Sign and send transaction
-        const signature = await sendTransaction(transaction, connection);
-        console.log('Payout transaction sent:', signature);
-        
-        // Wait for confirmation
-        const confirmation = await connection.confirmTransaction(signature);
-        console.log('Payout transaction confirmed:', confirmation);
-        
-      } catch (error) {
-        console.error('Error processing payout:', error);
-        toast({
-          title: "Payout Failed",
-          description: "Error processing winner payout. Please contact support.",
-          variant: "destructive"
-        });
-      }
-    }
-    
-    // Determine if current player won
-    const playerWon = winnerAddress === gameState.playerPubkey;
-    
-    // Show toast for game result
-    if (playerWon) {
-      toast({
-        title: "🎉 You won the match!",
-        description: `${gameState.stake * 2} SOL has been sent to your wallet.`,
-        duration: 5000,
-      });
-    } else {
-      toast({
-        title: "Game Over",
-        description: "You lost the match. Better luck next time!",
-        duration: 5000,
-      });
-    }
-    
-    // Return to lobby after delay
-    setTimeout(() => {
-      navigate('/');
-    }, 5000);
   };
 
   // Reset the game state
   const resetGame = () => {
     setGameState(defaultGameState);
   };
+
+  // Watch for round changes to clear moves and reset timer
+  useEffect(() => {
+    // This effect will trigger when the round changes after subscription updates
+    if (gameState.roundResult) {
+      const roundResultTimeout = setTimeout(() => {
+        // If we have a round result and it's not game over, prepare for next round
+        if (!gameState.gameOver) {
+          clearMovesAndResetTimer();
+        }
+      }, 2000); // Short delay to show the result before resetting
+      
+      return () => clearTimeout(roundResultTimeout);
+    }
+  }, [gameState.round, gameState.roundResult, gameState.gameOver, clearMovesAndResetTimer]);
 
   return (
     <GameContext.Provider value={{

@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGameContext } from "@/contexts/GameContext";
 
 interface TimerProps {
@@ -10,6 +10,7 @@ interface TimerProps {
 const Timer = ({ seconds, onComplete }: TimerProps) => {
   const [timeLeft, setTimeLeft] = useState(seconds);
   const { gameState } = useGameContext();
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Reset timer when shouldResetTimer changes or round changes
   useEffect(() => {
@@ -17,22 +18,40 @@ const Timer = ({ seconds, onComplete }: TimerProps) => {
       round: gameState.round,
       shouldResetTimer: gameState.shouldResetTimer
     });
-    setTimeLeft(seconds);
-  }, [gameState.shouldResetTimer, gameState.round, seconds]);
-  
-  useEffect(() => {
-    if (timeLeft <= 0) {
-      console.log("Timer completed");
-      onComplete?.();
-      return;
+    
+    // Clear any existing interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
     
-    const interval = setInterval(() => {
-      setTimeLeft((prev) => prev - 1);
+    // Reset timer to full value
+    setTimeLeft(seconds);
+    
+    // Start new countdown
+    intervalRef.current = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          // Timer completed, call onComplete and clear interval
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          onComplete?.();
+          return 0;
+        }
+        return prev - 1;
+      });
     }, 1000);
     
-    return () => clearInterval(interval);
-  }, [timeLeft, onComplete]);
+    // Cleanup on unmount or state change
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [gameState.shouldResetTimer, gameState.round, seconds, onComplete]);
   
   return (
     <div className="relative flex items-center justify-center">
