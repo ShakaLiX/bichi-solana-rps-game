@@ -1,10 +1,5 @@
 // src/contexts/GameContext.tsx
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect
-} from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useNavigate } from 'react-router-dom';
 import { PublicKey } from '@solana/web3.js';
@@ -34,16 +29,11 @@ interface GameState {
 }
 
 const EMPTY: GameState = {
-  id: '',
-  stake: 0,
-  round: 1,
-  playerScore: 0,
-  opponentScore: 0,
-  playerMove: null,
-  opponentMove: null,
+  id: '', stake: 0, round: 1,
+  playerScore: 0, opponentScore: 0,
+  playerMove: null, opponentMove: null,
   phase: 'waitingToCommit',
-  roundResult: null,
-  winner: null
+  roundResult: null, winner: null
 };
 
 const GameContext = createContext<{
@@ -55,8 +45,7 @@ const GameContext = createContext<{
 export const useGame = () => useContext(GameContext);
 
 export const GameProvider: React.FC<{ children: React.ReactNode; gameId: string }> = ({
-  children,
-  gameId
+  children, gameId
 }) => {
   const { publicKey, sendTransaction } = useWallet();
   const { connection } = useConnection();
@@ -65,7 +54,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; gameId: string 
 
   const [state, setState] = useState<GameState>(EMPTY);
 
-  // Debug: phase transitions
+  // Debug logging of phase, round, and score
   useEffect(() => {
     console.log(
       '⏰ PHASE', state.phase,
@@ -75,19 +64,19 @@ export const GameProvider: React.FC<{ children: React.ReactNode; gameId: string 
     );
   }, [state]);
 
-  // Subscribe only to this game’s row
+  // Subscribe only to updates for this game
   useEffect(() => {
     const sub = subscribeToGame(gameId, payload => {
       const d = payload.new;
       const prev = state;
 
-      // 1️⃣ Game Over?
+      // 1) If completed, go to gameOver
       if (d.status === 'completed' && prev.phase !== 'gameOver') {
         setState(s => ({ ...s, phase: 'gameOver', winner: d.round_result }));
         return;
       }
 
-      // 2️⃣ New Round?
+      // 2) If current_round increased, reset for new round
       if (d.current_round > prev.round) {
         setState(s => ({
           ...s,
@@ -100,7 +89,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; gameId: string 
         return;
       }
 
-      // 3️⃣ Reveal Moves & Update Scores
+      // 3) If both moves are in while waitingToReveal, reveal and update scores
       if (
         prev.phase === 'waitingToReveal' &&
         d.player1_move != null &&
@@ -109,7 +98,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; gameId: string 
         const meIsP1 = d.creator_wallet === publicKey!.toString();
         const pm = meIsP1 ? d.player1_move : d.player2_move;
         const om = meIsP1 ? d.player2_move : d.player1_move;
-        let result: 'win'|'lose'|'tie' = 'tie';
+        let result: 'win' | 'lose' | 'tie' = 'tie';
         if (pm !== om) {
           result =
             (pm === 'rock' && om === 'scissors') ||
@@ -118,35 +107,34 @@ export const GameProvider: React.FC<{ children: React.ReactNode; gameId: string 
               ? 'win'
               : 'lose';
         }
-
         setState(s => ({
           ...s,
           playerMove: pm,
           opponentMove: om,
           roundResult: result,
-          // increment the correct score
           playerScore: s.playerScore + (result === 'win' ? 1 : 0),
           opponentScore: s.opponentScore + (result === 'lose' ? 1 : 0),
           phase: 'showResult'
         }));
       }
     });
-
     return () => sub.unsubscribe();
   }, [gameId, publicKey, state]);
 
-  // Auto‐advance & Payout
+  // Advance rounds and handle payout
   useEffect(() => {
     if (state.phase === 'showResult') {
       const t = setTimeout(() => {
         const outcome =
-          state.roundResult === 'tie' ? 'tie' :
-          state.roundResult === 'win' ? 'player1_win' : 'player2_win';
+          state.roundResult === 'tie'
+            ? 'tie'
+            : state.roundResult === 'win'
+            ? 'player1_win'
+            : 'player2_win';
         updateRoundAndResult(state.id, outcome, state.round + 1);
       }, 3000);
       return () => clearTimeout(t);
     }
-
     if (state.phase === 'gameOver') {
       (async () => {
         await updateGameState(state.id, {
