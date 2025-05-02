@@ -1,85 +1,51 @@
-
-import { useState, useEffect, useRef } from "react";
-import { useGameContext } from "@/contexts/GameContext";
+import React, { useState, useEffect } from 'react';
 
 interface TimerProps {
   seconds: number;
   onComplete?: () => void;
 }
 
-const Timer = ({ seconds, onComplete }: TimerProps) => {
+const Timer: React.FC<TimerProps> = ({ seconds, onComplete }) => {
   const [timeLeft, setTimeLeft] = useState(seconds);
-  const { gameState } = useGameContext();
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Reset timer when shouldResetTimer changes or round changes
+
+  // Reset when the seconds prop changes (new round)
   useEffect(() => {
-    console.log("Timer reset triggered by game state", {
-      round: gameState.round,
-      shouldResetTimer: gameState.shouldResetTimer
-    });
-    
-    // Clear any existing interval
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    
-    // Reset timer to full value
     setTimeLeft(seconds);
-    
-    // Start new countdown
-    intervalRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          // Timer completed, call onComplete and clear interval
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-          }
-          onComplete?.();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    
-    // Cleanup on unmount or state change
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [gameState.shouldResetTimer, gameState.round, seconds, onComplete]);
-  
+  }, [seconds]);
+
+  // Countdown logic
+  useEffect(() => {
+    if (timeLeft <= 0) {
+      onComplete?.();
+      return;
+    }
+    const id = setInterval(() => setTimeLeft(t => t - 1), 1000);
+    return () => clearInterval(id);
+  }, [timeLeft, onComplete]);
+
   return (
-    <div className="relative flex items-center justify-center">
-      <svg className="transform -rotate-90 w-20 h-20">
-        <circle 
-          cx="40" 
-          cy="40" 
-          r="36"
+    <div className="relative w-20 h-20">
+      <svg className="transform -rotate-90 w-full h-full">
+        <circle
+          cx="40" cy="40" r="36"
           fill="transparent"
-          stroke="#E5E5E5"
+          stroke="#e5e5e5"
           strokeWidth="8"
         />
-        <circle 
-          cx="40" 
-          cy="40" 
-          r="36"
+        <circle
+          cx="40" cy="40" r="36"
           fill="transparent"
-          stroke={timeLeft < 10 ? "#FF5757" : "#F5A05C"}
+          stroke={timeLeft < seconds * 0.3 ? '#ff5757' : '#f5a05c'}
           strokeWidth="8"
           strokeLinecap="round"
           strokeDasharray={36 * 2 * Math.PI}
           strokeDashoffset={36 * 2 * Math.PI * (1 - timeLeft / seconds)}
-          style={{ transition: "stroke-dashoffset 1s linear" }}
+          style={{ transition: 'stroke-dashoffset 1s linear' }}
         />
       </svg>
-      <span className="absolute text-2xl font-bold text-bichi-brown">
+      <div className="absolute inset-0 flex items-center justify-center text-2xl font-bold">
         {timeLeft}
-      </span>
+      </div>
     </div>
   );
 };
