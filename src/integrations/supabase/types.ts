@@ -13,24 +13,39 @@ export type Database = {
         Row: {
           created_at: string
           creator_wallet: string
+          current_round: number | null
           id: string
           joined_wallet: string | null
+          last_update: string | null
+          player1_move: string | null
+          player2_move: string | null
+          round_result: string | null
           stake_amount: number
           status: string
         }
         Insert: {
           created_at?: string
           creator_wallet: string
+          current_round?: number | null
           id?: string
           joined_wallet?: string | null
+          last_update?: string | null
+          player1_move?: string | null
+          player2_move?: string | null
+          round_result?: string | null
           stake_amount: number
           status?: string
         }
         Update: {
           created_at?: string
           creator_wallet?: string
+          current_round?: number | null
           id?: string
           joined_wallet?: string | null
+          last_update?: string | null
+          player1_move?: string | null
+          player2_move?: string | null
+          round_result?: string | null
           stake_amount?: number
           status?: string
         }

@@ -3,6 +3,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 export default supabase;
+export { RealtimePostgresChangesPayload };
 
 // Types for our games table
 export interface GameRecord {

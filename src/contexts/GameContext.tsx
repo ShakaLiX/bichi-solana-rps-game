@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -9,10 +10,10 @@ import supabase, {
   subscribeToGame,
   recordMove,
   updateRoundAndResult,
-  updateGameState
+  updateGameState,
+  RealtimePostgresChangesPayload
 } from "@/lib/supabase";
 import { shortenAddress, createTransferTransaction, ESCROW_PUBKEY } from '@/lib/solana';
-import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 type MoveType = "rock" | "paper" | "scissors" | null;
 
@@ -92,7 +93,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Reset round timer flag
   const resetRoundTimer = useCallback(() => {
-    console.log('Round timer reset requested');
+    console.log('ROUND RESET: Round timer reset requested');
     setGameState(prev => ({
       ...prev,
       shouldResetTimer: !prev.shouldResetTimer // Toggle to trigger effect
@@ -111,7 +112,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // Set a timeout for auto-move
-    console.log('Setting up timeout for auto-move');
+    console.log('Setting up timeout for auto-move for round', gameState.round);
     timeoutRef.current = setTimeout(() => {
       console.log('TIMEOUT: Auto-selecting move due to timeout');
       // Auto-select rock if player hasn't moved
@@ -181,7 +182,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           walletAddress, 
           isCreator, 
           playerPubkey, 
-          opponentPubkey 
+          opponentPubkey,
+          current_round: data.current_round
         });
         
         setGameState(prev => ({
@@ -229,7 +231,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     supabaseSubscription.current = subscribeToGame(gameId, (payload: RealtimePostgresChangesPayload<GameRecord>) => {
       if (!payload.new) return;
 
-      const gameData = payload.new as GameRecord;
+      const gameData = payload.new;
       const isCreator = gameState.isCreator;
       
       console.log('Game update received:', gameData);
@@ -246,6 +248,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const roundChanged = gameData.current_round !== prev.round;
         if (roundChanged) {
           console.log('ROUND RESET: Moving to round', gameData.current_round);
+          
           // Reset timer on round change
           if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
