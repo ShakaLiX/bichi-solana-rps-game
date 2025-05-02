@@ -1,10 +1,5 @@
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback
-} from 'react';
+// src/contexts/GameContext.tsx
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useNavigate } from 'react-router-dom';
 import { PublicKey } from '@solana/web3.js';
@@ -34,10 +29,16 @@ interface GameState {
 }
 
 const emptyState: GameState = {
-  id: '', stake: 0, round: 1,
-  playerScore: 0, opponentScore: 0,
-  playerMove: null, opponentMove: null,
-  phase: 'waitingToCommit', roundResult: null, winner: null
+  id: '',
+  stake: 0,
+  round: 1,
+  playerScore: 0,
+  opponentScore: 0,
+  playerMove: null,
+  opponentMove: null,
+  phase: 'waitingToCommit',
+  roundResult: null,
+  winner: null
 };
 
 const GameContext = createContext<any>(null);
@@ -53,18 +54,27 @@ export const GameProvider: React.FC<{ children: React.ReactNode; gameId: string 
 
   // Trace phase transitions
   useEffect(() => {
-    console.log('⏰ PHASE', state.phase, 'ROUND', state.round, 'MOVES', state.playerMove, state.opponentMove);
+    console.log(
+      '⏰ PHASE', state.phase,
+      'ROUND', state.round,
+      'P1:', state.playerMove,
+      'P2:', state.opponentMove
+    );
   }, [state.phase, state.round, state.playerMove, state.opponentMove]);
 
-  // Subscribe to game updates
+  // Real-time subscription for _this_ game only
   useEffect(() => {
     const sub = subscribeToGame(gameId, payload => {
       const d = payload.new;
       const prev = state;
+
+      // 1) Game over
       if (d.status === 'completed' && prev.phase !== 'gameOver') {
         setState(s => ({ ...s, phase: 'gameOver', winner: d.round_result }));
         return;
       }
+
+      // 2) New round
       if (d.current_round > prev.round) {
         setState(s => ({
           ...s,
@@ -76,14 +86,25 @@ export const GameProvider: React.FC<{ children: React.ReactNode; gameId: string 
         }));
         return;
       }
-      if (prev.phase === 'waitingToReveal' && d.player1_move && d.player2_move) {
+
+      // 3) Reveal moves
+      if (
+        prev.phase === 'waitingToReveal' &&
+        d.player1_move != null &&
+        d.player2_move != null
+      ) {
         const meIsP1 = d.creator_wallet === publicKey!.toString();
         const pm = meIsP1 ? d.player1_move : d.player2_move;
         const om = meIsP1 ? d.player2_move : d.player1_move;
-        const result = pm === om ? 'tie'
-          : (pm === 'rock' && om === 'scissors') || (pm === 'paper' && om === 'rock') || (pm === 'scissors' && om === 'paper')
+        const result =
+          pm === om
+            ? 'tie'
+            : (pm === 'rock' && om === 'scissors') ||
+              (pm === 'paper' && om === 'rock') ||
+              (pm === 'scissors' && om === 'paper')
             ? 'win'
             : 'lose';
+
         setState(s => ({
           ...s,
           playerMove: pm,
@@ -93,25 +114,37 @@ export const GameProvider: React.FC<{ children: React.ReactNode; gameId: string 
         }));
       }
     });
+
     return () => sub.unsubscribe();
   }, [gameId, publicKey, state.phase, state.round]);
 
-  // Auto transitions for showResult and gameOver
+  // Auto-advance after showing result, and handle payout on gameOver
   useEffect(() => {
     if (state.phase === 'showResult') {
       const t = setTimeout(() => {
-        const outcome = state.roundResult === 'tie' ? 'tie'
-          : state.roundResult === 'win' ? 'player1_win'
-          : 'player2_win';
+        const outcome =
+          state.roundResult === 'tie'
+            ? 'tie'
+            : state.roundResult === 'win'
+            ? 'player1_win'
+            : 'player2_win';
         updateRoundAndResult(state.id, outcome, state.round + 1);
       }, 3000);
       return () => clearTimeout(t);
     }
+
     if (state.phase === 'gameOver') {
       (async () => {
-        await updateGameState(state.id, { status: 'completed', round_result: state.winner! });
+        await updateGameState(state.id, {
+          status: 'completed',
+          round_result: state.winner!
+        });
         const winnerKey = new PublicKey(state.winner!);
-        const tx = createTransferTransaction(ESCROW_PUBKEY, winnerKey, state.stake * 2);
+        const tx = createTransferTransaction(
+          ESCROW_PUBKEY,
+          winnerKey,
+          state.stake * 2
+        );
         const sig = await sendTransaction(tx, connection);
         toast({ title: 'Payout', description: sig });
         setTimeout(() => navigate('/'), 5000);
@@ -125,13 +158,20 @@ export const GameProvider: React.FC<{ children: React.ReactNode; gameId: string 
   };
 
   const commitMove = async () => {
-    if (state.phase !== 'waitingToCommit' || !state.playerMove || !publicKey) return;
+    if (
+      state.phase !== 'waitingToCommit' ||
+      !state.playerMove ||
+      !publicKey
+    )
+      return;
     await recordMove(state.id, publicKey.toString(), state.playerMove);
     setState(s => ({ ...s, phase: 'waitingToReveal' }));
   };
 
   return (
-    <GameContext.Provider value={{ state, selectMove, commitMove }}>
+    <GameContext.Provider
+      value={{ state, selectMove, commitMove }}
+    >
       {children}
     </GameContext.Provider>
   );
