@@ -70,6 +70,7 @@ const WalletConnectButton = () => {
           toast({
             title: "Balance Error",
             description: `Failed to fetch wallet balance: ${error.message}`,
+            variant: "destructive"
           });
           if (isMounted) {
             setBalance(null);
@@ -127,6 +128,7 @@ const WalletConnectButton = () => {
         toast({
           title: "Balance Error",
           description: `Failed to refresh wallet balance: ${error.message}`,
+          variant: "destructive"
         });
         setBalance(null);
       } finally {
@@ -148,7 +150,7 @@ const WalletConnectButton = () => {
               {isLoading ? (
                 <p className="font-bold">Loading...</p>
               ) : balance !== null ? (
-                <p className="font-bold">{balance.toFixed(4)} SOL</p>
+                <p className="font-bold">{balance.toFixed(2)} SOL</p>
               ) : (
                 <p className="font-bold text-red-500">Error</p>
               )}

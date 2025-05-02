@@ -16,20 +16,50 @@ const CreateGameForm = () => {
   // Fetch wallet balance when connected
   useEffect(() => {
     if (connected && publicKey) {
+      console.log("CreateGameForm: Fetching balance for connected wallet");
       getBalance(publicKey)
-        .then(balance => setWalletBalance(balance))
-        .catch(error => console.error('Error fetching balance:', error));
+        .then(balance => {
+          console.log("CreateGameForm: Balance fetched:", balance);
+          setWalletBalance(balance);
+        })
+        .catch(error => {
+          console.error('CreateGameForm: Error fetching balance:', error);
+          toast({
+            title: "Balance Error",
+            description: "Failed to fetch your wallet balance. Please try refreshing.",
+            variant: "destructive"
+          });
+        });
     } else {
       setWalletBalance(0);
     }
-  }, [connected, publicKey]);
+  }, [connected, publicKey, toast]);
+
+  // Update form when wallet balance changes
+  useEffect(() => {
+    console.log("CreateGameForm: Wallet balance updated to:", walletBalance);
+    // If the current stake amount is higher than the wallet balance, adjust it
+    if (stakeAmount > walletBalance && walletBalance > 0) {
+      const newStake = Math.min(0.1, walletBalance - 0.01); // Leave 0.01 SOL for gas fees
+      setStakeAmount(Math.max(newStake, 0.01));
+    }
+  }, [walletBalance, stakeAmount]);
 
   const handleIncrement = () => {
-    setStakeAmount(prev => Math.min(prev + 0.1, walletBalance > 0 ? walletBalance - 0.01 : 10));
+    setStakeAmount(prev => {
+      const maxAmount = walletBalance > 0 ? walletBalance - 0.01 : 10;
+      const newAmount = Math.min(prev + 0.1, maxAmount);
+      console.log("Incrementing stake to:", newAmount);
+      return newAmount;
+    });
   };
 
   const handleDecrement = () => {
-    setStakeAmount(prev => Math.max(prev - 0.1, 0.1));
+    setStakeAmount(prev => {
+      const newAmount = Math.max(prev - 0.1, 0.1);
+      console.log("Decrementing stake to:", newAmount);
+      return newAmount;
+    });
   };
 
   const handleCreateGame = async () => {
@@ -54,6 +84,8 @@ const CreateGameForm = () => {
     setIsCreating(true);
 
     try {
+      console.log("Creating game with stake:", stakeAmount, "SOL");
+      
       // Create a transaction to transfer SOL to the escrow account
       const transaction = await createTransferTransaction(
         publicKey,
@@ -63,6 +95,7 @@ const CreateGameForm = () => {
 
       // Sign the transaction
       const signedTransaction = await signTransaction(transaction);
+      console.log("Transaction signed successfully");
 
       // In a real implementation, we would send the transaction here
       // For now, we'll simulate this with a timeout
@@ -72,6 +105,13 @@ const CreateGameForm = () => {
           description: `Your game with ${stakeAmount} SOL stake is now available for others to join.`,
         });
         setIsCreating(false);
+        
+        // Refresh balance after creating game
+        if (publicKey) {
+          getBalance(publicKey)
+            .then(balance => setWalletBalance(balance))
+            .catch(error => console.error('Error fetching balance after game creation:', error));
+        }
       }, 1000);
 
       // In a real implementation, we would broadcast the transaction:
@@ -126,7 +166,7 @@ const CreateGameForm = () => {
             <button 
               onClick={handleDecrement}
               className="h-12 w-12 rounded-l-lg bg-muted hover:bg-bichi-light-orange flex items-center justify-center text-lg font-bold border border-bichi-light-orange"
-              disabled={!connected}
+              disabled={!connected || stakeAmount <= 0.1}
             >
               −
             </button>
@@ -139,7 +179,7 @@ const CreateGameForm = () => {
             <button 
               onClick={handleIncrement}
               className="h-12 w-12 rounded-r-lg bg-muted hover:bg-bichi-light-orange flex items-center justify-center text-lg font-bold border border-bichi-light-orange"
-              disabled={!connected}
+              disabled={!connected || stakeAmount >= (walletBalance - 0.01)}
             >
               +
             </button>
@@ -151,7 +191,7 @@ const CreateGameForm = () => {
         
         <Button 
           className="w-full bg-gradient-to-r from-bichi-orange to-bichi-light-orange hover:opacity-90 text-white py-6 flex items-center justify-center gap-2"
-          disabled={isCreating || !connected}
+          disabled={isCreating || !connected || walletBalance < stakeAmount}
           onClick={handleCreateGame}
         >
           {isCreating ? (
