@@ -5,12 +5,45 @@ import { useToast } from "@/hooks/use-toast";
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { getBalance, shortenAddress } from '@/lib/solana';
+import { useConnection } from '@solana/wallet-adapter-react';
 
 const WalletConnectButton = () => {
   const { toast } = useToast();
   const { publicKey, connected, disconnect } = useWallet();
+  const { connection } = useConnection();
   const [balance, setBalance] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [network, setNetwork] = useState<string>("Unknown");
+
+  // Check which network we're connected to
+  useEffect(() => {
+    const checkNetwork = async () => {
+      if (connection) {
+        try {
+          const genesisHash = await connection.getGenesisHash();
+          console.log("Genesis hash:", genesisHash);
+          
+          // Determine network from genesis hash
+          if (genesisHash === "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG") {
+            setNetwork("Devnet");
+          } else if (genesisHash === "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d") {
+            setNetwork("Mainnet");
+          } else {
+            setNetwork("Unknown network");
+          }
+          
+          console.log("Connected to network:", network);
+        } catch (error) {
+          console.error("Error getting network:", error);
+          setNetwork("Error detecting network");
+        }
+      }
+    };
+    
+    if (connected) {
+      checkNetwork();
+    }
+  }, [connected, connection]);
 
   // Function to get the wallet balance
   useEffect(() => {
@@ -18,18 +51,25 @@ const WalletConnectButton = () => {
     
     const fetchBalance = async () => {
       if (publicKey) {
+        console.log("Attempting to fetch balance for wallet:", publicKey.toString());
         setIsLoading(true);
         try {
+          // Direct method to get balance as a backup
+          const rawLamports = await connection.getBalance(publicKey);
+          console.log("Raw lamports from direct connection:", rawLamports);
+          
+          // Using our utility function
           const walletBalance = await getBalance(publicKey);
+          console.log("Processed balance from getBalance utility:", walletBalance);
+          
           if (isMounted) {
-            console.log("Wallet balance fetched:", walletBalance);
             setBalance(walletBalance);
           }
         } catch (error) {
           console.error('Failed to fetch balance:', error);
           toast({
             title: "Balance Error",
-            description: "Failed to fetch wallet balance",
+            description: `Failed to fetch wallet balance: ${error.message}`,
           });
           if (isMounted) {
             setBalance(null);
@@ -47,7 +87,7 @@ const WalletConnectButton = () => {
       // Show toast for successful connection
       toast({
         title: "Wallet Connected",
-        description: `Successfully connected to ${shortenAddress(publicKey.toString())}`,
+        description: `Successfully connected to ${shortenAddress(publicKey.toString())} on ${network}`,
       });
     } else {
       setBalance(null);
@@ -56,7 +96,7 @@ const WalletConnectButton = () => {
     return () => {
       isMounted = false;
     };
-  }, [publicKey, connected, toast]);
+  }, [publicKey, connected, toast, connection, network]);
 
   // Custom disconnect handler to show toast
   const handleDisconnect = async () => {
@@ -71,6 +111,10 @@ const WalletConnectButton = () => {
     if (publicKey) {
       setIsLoading(true);
       try {
+        // Try direct method for debugging
+        const rawLamports = await connection.getBalance(publicKey);
+        console.log("Raw lamports on refresh:", rawLamports);
+        
         const walletBalance = await getBalance(publicKey);
         console.log("Refreshed balance:", walletBalance);
         setBalance(walletBalance);
@@ -82,7 +126,7 @@ const WalletConnectButton = () => {
         console.error('Failed to refresh balance:', error);
         toast({
           title: "Balance Error",
-          description: "Failed to refresh wallet balance",
+          description: `Failed to refresh wallet balance: ${error.message}`,
         });
         setBalance(null);
       } finally {
@@ -96,7 +140,10 @@ const WalletConnectButton = () => {
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
           <div className="text-sm font-medium text-right">
-            <p className="text-bichi-brown">{shortenAddress(publicKey.toString())}</p>
+            <p className="text-bichi-brown">
+              {shortenAddress(publicKey.toString())} 
+              <span className="text-xs ml-1">({network})</span>
+            </p>
             <div className="flex items-center gap-1">
               {isLoading ? (
                 <p className="font-bold">Loading...</p>

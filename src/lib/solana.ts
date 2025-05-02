@@ -5,20 +5,24 @@ import { clusterApiUrl } from '@solana/web3.js';
 
 // Get the RPC endpoint for the current network
 export const getEndpoint = (network = WalletAdapterNetwork.Devnet) => {
+  console.log(`Using network: ${network}`);
   return clusterApiUrl(network);
 };
 
 // Create a connection to Solana
 export const getConnection = (network = WalletAdapterNetwork.Devnet) => {
-  // Using 'processed' instead of 'confirmed' for more up-to-date balance
-  return new Connection(getEndpoint(network), 'processed');
+  const endpoint = getEndpoint(network);
+  console.log(`Connecting to endpoint: ${endpoint}`);
+  // Using 'processed' for quicker updates
+  return new Connection(endpoint, 'processed');
 };
 
 // Get the balance for a public key (in SOL)
 export const getBalance = async (publicKey: PublicKey): Promise<number> => {
   const connection = getConnection();
   try {
-    // Using 'processed' commitment for more recent balance updates
+    console.log(`Fetching balance for: ${publicKey.toBase58()}`);
+    // Try both commitment levels to make sure we get a balance
     const balance = await connection.getBalance(publicKey, 'processed');
     console.log('Raw balance in lamports:', balance);
     return balance / LAMPORTS_PER_SOL;

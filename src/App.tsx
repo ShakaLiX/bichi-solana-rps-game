@@ -23,10 +23,13 @@ const queryClient = new QueryClient();
 
 const App = () => {
   // The network can be set to 'devnet', 'testnet', or 'mainnet-beta'
+  // IMPORTANT: Make sure your Phantom wallet is set to the same network
   const network = WalletAdapterNetwork.Devnet;
+  console.log("App initializing with network:", network);
   
   // You can also provide a custom RPC endpoint
   const endpoint = clusterApiUrl(network);
+  console.log("Using RPC endpoint:", endpoint);
   
   // @solana/wallet-adapter-wallets includes all the adapters but supports tree shaking and lazy loading
   // Only the wallets you configure here will be compiled into your application, and only the dependencies
