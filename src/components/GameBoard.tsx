@@ -1,64 +1,141 @@
-import React from 'react';
-import { useGame } from '@/contexts/GameContext';
+// src/components/GameBoard.tsx
+import React, { useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 import Timer from './Timer';
 import GameMove from './GameMove';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useGame } from '@/contexts/GameContext';
+import { shortenAddress } from '@/lib/solana';
 
 const GameBoard: React.FC = () => {
   const { state, selectMove, commitMove } = useGame();
-  const { phase, playerMove, opponentMove, round, playerScore, opponentScore, stake, roundResult } = state;
+  const { toast } = useToast();
+  const { connected } = useWallet();
+
+  useEffect(() => {
+    if (!connected) {
+      toast({
+        title: 'Wallet Not Connected',
+        description: 'Please connect your wallet to play.',
+        variant: 'destructive'
+      });
+    }
+  }, [connected, toast]);
+
+  const {
+    round,
+    playerScore,
+    opponentScore,
+    playerMove,
+    opponentMove,
+    playerCommitted,
+    opponentCommitted,
+    roundResult,
+    stake,
+    playerPubkey,
+    opponentPubkey,
+    phase,
+    winner
+  } = state;
 
   return (
-    <div className="p-4">
-      <h2 className="text-xl font-bold">Round {round} • {playerScore}–{opponentScore}</h2>
+    <div className="container max-w-4xl py-4">
+      <div className="flex items-center justify-between mb-6">
+        <Link to="/">
+          <Button variant="outline">← Back to Lobby</Button>
+        </Link>
+        <h2 className="text-xl font-medium">Round {round}/3 · {playerScore} - {opponentScore}</h2>
+        <span className="font-medium">Stake: {stake} SOL</span>
+      </div>
 
-      {phase === 'waitingToCommit' && (
-        <>
-          <Timer seconds={30} onComplete={commitMove} />
-          <div className="flex gap-4 mt-4">
-            {(['rock','paper','scissors'] as const).map(m => (
-              <GameMove
-                key={m}
-                moveType={m}
-                selected={playerMove===m}
-                onClick={() => selectMove(m)}
-              />
-            ))}
+      <div className="grid grid-cols-3 gap-4">
+        {/* Player side */}
+        <div className="bg-white rounded-2xl p-6 shadow flex flex-col items-center">
+          <div className="mb-4 text-center">
+            <div className="bg-pink-200 rounded-full px-3 py-1 mb-2 text-pink-700 font-medium">YOU</div>
+            <p>{playerPubkey ? shortenAddress(playerPubkey) : '---'}</p>
           </div>
-          <button
-            onClick={commitMove}
-            disabled={!playerMove}
-            className="mt-4 bg-blue-600 text-white px-4 py-2 rounded"
-          >
-            Confirm
-          </button>
-        </>
-      )}
-
-      {phase === 'waitingToReveal' && (
-        <p className="mt-6 text-center">Waiting for opponent...</p>
-      )}
-
-      {phase === 'showResult' && (
-        <div className="mt-6 text-center">
-          <p>You: {playerMove}</p>
-          <p>Them: {opponentMove}</p>
-          <p className="mt-2 font-semibold">
-            {roundResult === 'win' ? 'You win this round!' :
-             roundResult === 'lose' ? 'You lose this round.' :
-             "It's a tie!"}
-          </p>
+          {playerCommitted ? (
+            <div className="text-center">
+              {playerMove && <GameMove moveType={playerMove} />}
+              <p className="mt-2">Locked In</p>
+            </div>
+          ) : (
+            <p>Waiting for your move...</p>
+          )}
         </div>
-      )}
 
-      {phase === 'gameOver' && (
-        <div className="mt-6 text-center">
-          <p className="text-2xl font-bold">
-            {playerScore>opponentScore ? '🎉 You Won!' : '😢 You Lost.'}
-          </p>
+        {/* Center */}
+        <div className="flex flex-col items-center">
+          {phase !== 'gameOver' && <Timer seconds={30} />}
+          <div className="text-3xl font-bold my-4">VS</div>
+
+          {roundResult && (
+            <div className="mb-4 text-center">
+              {roundResult === 'win' && <p className="text-green-600 font-bold">🎉 You win!</p>}
+              {roundResult === 'lose' && <p className="text-red-500 font-bold">😢 You lose!</p>}
+              {roundResult === 'tie' && <p className="text-yellow-600 font-bold">🤝 It's a tie!</p>}
+            </div>
+          )}
+
+          {phase === 'waitingToCommit' && (
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              {(['rock','paper','scissors'] as const).map(move => (
+                <GameMove
+                  key={move}
+                  moveType={move}
+                  selected={playerMove === move}
+                  onClick={() => selectMove(move)}
+                  disabled={!connected}
+                />
+              ))}
+            </div>
+          )}
+
+          {!playerCommitted && playerMove && phase === 'waitingToCommit' && (
+            <Button onClick={commitMove}>Confirm</Button>
+          )}
+
+          {phase === 'gameOver' && (
+            <div className="mt-4 text-center">
+              {winner ? (
+                winner === playerPubkey ? (
+                  <p className="text-xl">🎉 You won the match!</p>
+                ) : (
+                  <p className="text-xl">Game Over</p>
+                )
+              ) : (
+                <p className="text-xl">Match tied</p>
+              )}
+              <Link to="/" className="mt-4 inline-block">
+                <Button>Return to Lobby</Button>
+              </Link>
+            </div>
+          )}
         </div>
-      )}
 
-      <p className="mt-8 text-sm">Stake: {stake} SOL</p>
+        {/* Opponent side */}
+        <div className="bg-white rounded-2xl p-6 shadow flex flex-col items-center">
+          <div className="mb-4 text-center">
+            <div className="bg-orange-200 rounded-full px-3 py-1 mb-2 text-orange-700 font-medium">OPP</div>
+            <p>{opponentPubkey ? shortenAddress(opponentPubkey) : '---'}</p>
+          </div>
+
+          {opponentCommitted ? (
+            <div className="text-center">
+              {roundResult != null ? (
+                opponentMove && <GameMove moveType={opponentMove} />
+              ) : (
+                <p>Locked In</p>
+              )}
+            </div>
+          ) : (
+            <p>Waiting for opponent...</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
