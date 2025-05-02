@@ -1,5 +1,4 @@
 
-import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import CreateGameForm from "@/components/CreateGameForm";
@@ -7,6 +6,7 @@ import GamesList from "@/components/GamesList";
 import { useToast } from "@/hooks/use-toast";
 import supabase, { subscribeToGames, type RealtimePostgresChangesPayload, GameRecord } from "@/lib/supabase";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { useEffect } from "react";
 
 const LobbyPage = () => {
   const { toast } = useToast();

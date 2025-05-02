@@ -16,8 +16,7 @@ const GameBoard = () => {
     gameState, 
     selectMove, 
     commitMove, 
-    isLoading, 
-    resetRoundTimer 
+    isLoading 
   } = useGameContext();
   
   // Check if wallet is connected
@@ -42,11 +41,8 @@ const GameBoard = () => {
   };
 
   const handleTimerComplete = () => {
-    console.log("TIMEOUT: Timer completed, auto-selecting rock");
-    if (!gameState.playerCommitted && !gameState.gameOver) {
-      handleSelectMove("rock");
-      handleCommitMove();
-    }
+    console.log("TIMEOUT: Timer completed in GameBoard");
+    // Timer completion is now handled in the GameContext
   };
   
   return (
@@ -84,20 +80,10 @@ const GameBoard = () => {
           <div className="flex-grow flex items-center justify-center">
             {gameState.playerCommitted ? (
               <div className="text-center">
-                {gameState.roundResult === null ? (
-                  <div className="text-bichi-brown">
-                    <div className="bg-bichi-light-orange rounded-full p-3">
-                      <span className="text-3xl">🔒</span>
-                    </div>
-                    <p className="mt-2">Move locked in</p>
-                  </div>
-                ) : (
-                  <div className="text-center">
-                    <div className="text-5xl mb-2">
-                      {gameState.playerMove && <GameMove moveType={gameState.playerMove} />}
-                    </div>
-                  </div>
-                )}
+                <div className="text-5xl mb-2">
+                  {gameState.playerMove && <GameMove moveType={gameState.playerMove} />}
+                </div>
+                <p className="mt-2 text-bichi-brown">Move locked in</p>
               </div>
             ) : (
               <div className="text-center text-bichi-brown">
@@ -110,7 +96,7 @@ const GameBoard = () => {
         {/* Center - timer and moves */}
         <div className="flex flex-col items-center justify-between">
           <div className="flex flex-col items-center justify-center mt-4">
-            {!gameState.gameOver && !gameState.roundResult && (
+            {!gameState.gameOver && (
               <Timer 
                 seconds={30} 
                 onComplete={handleTimerComplete} 

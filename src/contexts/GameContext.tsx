@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -99,9 +100,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   }, []);
 
-  // Setup timeout for moves
+  // Setup timeout for moves - modified to handle timeout logic correctly
   useEffect(() => {
-    if (!gameState.id || gameState.playerCommitted || gameState.gameOver) {
+    if (!gameState.id || gameState.gameOver) {
       // Clear any existing timeout
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
@@ -111,18 +112,32 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // Set a timeout for auto-move
-    console.log('Setting up timeout for auto-move for round', gameState.round);
+    console.log('Setting up timeout for round', gameState.round);
     timeoutRef.current = setTimeout(() => {
-      console.log('TIMEOUT: Auto-selecting move due to timeout');
-      // Auto-select rock if player hasn't moved
-      if (!gameState.playerCommitted) {
-        // Auto select rock
-        selectMove("rock");
-        commitMove();
+      console.log('TIMEOUT: Timer expired for round', gameState.round);
+      
+      // Handle timeout based on committed moves
+      if (gameState.playerCommitted && !gameState.opponentCommitted) {
+        // Only opponent didn't commit - player wins round
+        if (gameState.isCreator) {
+          console.log('TIMEOUT: Player committed but opponent did not - player wins round');
+          handlePlayerWinsRound();
+        }
+      } 
+      else if (!gameState.playerCommitted && gameState.opponentCommitted) {
+        // Only player didn't commit - opponent wins round
+        if (gameState.isCreator) {
+          console.log('TIMEOUT: Opponent committed but player did not - opponent wins round');
+          handleOpponentWinsRound();
+        }
+      } 
+      else if (!gameState.playerCommitted && !gameState.opponentCommitted) {
+        // Neither player committed - reset round timer
+        console.log('TIMEOUT: No players committed moves - resetting round timer');
+        resetRoundTimer();
         toast({
-          title: "Time's up!",
-          description: "Rock was automatically selected",
-          variant: "destructive"
+          title: "Round reset",
+          description: "No moves were made. Try again!",
         });
       }
     }, 30000); // 30 seconds timeout
@@ -133,7 +148,80 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         timeoutRef.current = null;
       }
     };
-  }, [gameState.round, gameState.playerCommitted, gameState.gameOver, gameState.id]);
+  }, [gameState.round, gameState.gameOver, gameState.id, gameState.playerCommitted, gameState.opponentCommitted]);
+
+  // Helper functions for timeout handling
+  const handlePlayerWinsRound = async () => {
+    if (!gameState.id) return;
+    
+    setGameState(prev => {
+      const newPlayerScore = prev.playerScore + 1;
+      
+      // Check if player won the game
+      if (newPlayerScore >= 2) {
+        handleGameOver(prev.playerPubkey);
+        return {
+          ...prev,
+          playerScore: newPlayerScore,
+          roundResult: "win"
+        };
+      }
+      
+      // Continue to next round
+      updateRoundAndResult(
+        prev.id!,
+        'player1_win',
+        prev.round + 1
+      );
+      
+      return {
+        ...prev,
+        playerScore: newPlayerScore,
+        roundResult: "win"
+      };
+    });
+    
+    toast({ 
+      title: "Round won by timeout!", 
+      description: "Your opponent didn't make a move in time."
+    });
+  };
+  
+  const handleOpponentWinsRound = async () => {
+    if (!gameState.id) return;
+    
+    setGameState(prev => {
+      const newOpponentScore = prev.opponentScore + 1;
+      
+      // Check if opponent won the game
+      if (newOpponentScore >= 2) {
+        handleGameOver(prev.opponentPubkey);
+        return {
+          ...prev,
+          opponentScore: newOpponentScore,
+          roundResult: "lose"
+        };
+      }
+      
+      // Continue to next round
+      updateRoundAndResult(
+        prev.id!,
+        'player2_win',
+        prev.round + 1
+      );
+      
+      return {
+        ...prev,
+        opponentScore: newOpponentScore,
+        roundResult: "lose"
+      };
+    });
+    
+    toast({ 
+      title: "Round lost by timeout!", 
+      description: "You didn't make a move in time."
+    });
+  };
 
   // Load game data from Supabase
   useEffect(() => {
