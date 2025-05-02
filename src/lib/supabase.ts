@@ -1,55 +1,13 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// Get Supabase URL and anon key from environment variables
+// Use the values defined in src/integrations/supabase/client.ts if available
+const supabaseUrl = "https://uuhdluysciuxzswveaqx.supabase.co";
+const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1aGRsdXlzY2l1eHpzd3ZlYXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDYyMTAwMzUsImV4cCI6MjA2MTc4NjAzNX0.LFa32-oU0cFhlbsANmnS5Y9_3cqT6SnxK4QYLM527tU";
 
-// Check if credentials are available before creating client
-let supabase: ReturnType<typeof createClient>;
-
-if (supabaseUrl && supabaseAnonKey) {
-  // Only create client if both URL and key are available
-  supabase = createClient(supabaseUrl, supabaseAnonKey);
-  console.log('Supabase client initialized successfully');
-} else {
-  console.error('Missing Supabase credentials. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables.');
-  // Create a mock client that logs errors instead of crashing
-  supabase = {
-    from: () => ({
-      insert: () => {
-        console.error('Supabase not configured: Cannot insert data');
-        return { data: null, error: new Error('Supabase not configured') };
-      },
-      select: () => {
-        console.error('Supabase not configured: Cannot select data');
-        return { data: null, error: new Error('Supabase not configured') };
-      },
-      update: () => {
-        console.error('Supabase not configured: Cannot update data');
-        return { data: null, error: new Error('Supabase not configured') };
-      },
-      eq: () => ({
-        order: () => {
-          console.error('Supabase not configured: Cannot query data');
-          return { data: [], error: new Error('Supabase not configured') };
-        }
-      }),
-      single: () => {
-        console.error('Supabase not configured: Cannot fetch single record');
-        return { data: null, error: new Error('Supabase not configured') };
-      }
-    }),
-    channel: () => ({
-      on: () => ({
-        subscribe: () => ({
-          unsubscribe: () => console.log('Mock unsubscribe called')
-        })
-      })
-    })
-  } as any; // Type assertion to avoid TypeScript errors
-}
-
-export { supabase };
+// Create Supabase client
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Types for our games table
 export interface GameRecord {
@@ -86,7 +44,7 @@ export const createGameRecord = async (
     }
     
     console.log('Game record created successfully:', data);
-    return data;
+    return data as GameRecord;
   } catch (error) {
     console.error('Exception creating game record:', error);
     return null;
@@ -110,7 +68,7 @@ export const fetchOpenGames = async (): Promise<GameRecord[]> => {
     }
     
     console.log('Fetched open games successfully:', data);
-    return data || [];
+    return data as GameRecord[] || [];
   } catch (error) {
     console.error('Exception fetching open games:', error);
     return [];
