@@ -1,9 +1,8 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { createTransferTransaction, ESCROW_PUBKEY, shortenAddress } from '@/lib/solana';
 import { fetchOpenGames, subscribeToGames, joinGame, GameRecord } from '@/lib/supabase';
 import { format } from 'date-fns';
@@ -37,7 +36,8 @@ const GamesList = () => {
   const [games, setGames] = useState<GameData[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const { publicKey, signTransaction, sendTransaction, connected } = useWallet();
-
+  const { connection } = useConnection();
+  
   // Fetch games from Supabase and set up real-time subscription
   useEffect(() => {
     const loadGames = async () => {
@@ -103,7 +103,7 @@ const GamesList = () => {
       );
 
       // Sign and send the transaction
-      const signature = await sendTransaction(transaction);
+      const signature = await sendTransaction(transaction, connection);
       console.log('Stake transaction sent:', signature);
       
       // Update the game status in Supabase

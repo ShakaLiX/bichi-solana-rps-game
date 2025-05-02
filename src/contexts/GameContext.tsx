@@ -216,7 +216,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('Committing move:', gameState.playerMove);
       
       // Broadcast move to opponent
-      const { error } = await supabase
+      const response = await supabase
         .channel(`game_moves_${gameState.id}`)
         .send({
           type: 'broadcast',
@@ -228,8 +228,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         });
       
-      if (error) {
-        console.error('Error broadcasting move:', error);
+      if (response.status !== 200) {
+        console.error('Error broadcasting move:', response);
         throw new Error('Failed to send your move');
       }
       
