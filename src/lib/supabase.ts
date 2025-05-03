@@ -1,10 +1,12 @@
+
 // src/lib/supabase.ts
 import { createClient } from '@supabase/supabase-js';
+import { Database } from '@/integrations/supabase/types';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY!;
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY);
 export default supabase;
 
 // Shape of a game row
@@ -20,7 +22,7 @@ export interface GameRecord {
 // Fetch all open games
 export async function fetchOpenGames(): Promise<GameRecord[]> {
   const { data, error } = await supabase
-    .from<GameRecord>('games')
+    .from('games')
     .select('*')
     .eq('status', 'open')
     .order('created_at', { ascending: false });
@@ -28,13 +30,13 @@ export async function fetchOpenGames(): Promise<GameRecord[]> {
     console.error('fetchOpenGames error:', error);
     return [];
   }
-  return data;
+  return data as GameRecord[];
 }
 
 // Fetch one game by ID
 export async function fetchGameData(id: string): Promise<GameRecord | null> {
   const { data, error } = await supabase
-    .from<GameRecord>('games')
+    .from('games')
     .select('*')
     .eq('id', id)
     .single();
@@ -42,7 +44,7 @@ export async function fetchGameData(id: string): Promise<GameRecord | null> {
     console.error('fetchGameData error:', error);
     return null;
   }
-  return data;
+  return data as GameRecord;
 }
 
 // Create a new game record
@@ -51,7 +53,7 @@ export async function createGameRecord(
   stake_amount: number
 ): Promise<GameRecord | null> {
   const { data, error } = await supabase
-    .from<GameRecord>('games')
+    .from('games')
     .insert({
       creator_wallet,
       stake_amount,
@@ -63,7 +65,7 @@ export async function createGameRecord(
     console.error('createGameRecord error:', error);
     return null;
   }
-  return data;
+  return data as GameRecord;
 }
 
 // Mark a game as joined by a second player
@@ -72,7 +74,7 @@ export async function joinGameRecord(
   joined_wallet: string
 ): Promise<boolean> {
   const { error } = await supabase
-    .from<GameRecord>('games')
+    .from('games')
     .update({ joined_wallet, status: 'joined' })
     .eq('id', id);
   if (error) {
@@ -89,7 +91,7 @@ export async function updateRoundAndResult(
   current_round: number
 ) {
   const { error } = await supabase
-    .from<GameRecord>('games')
+    .from('games')
     .update({ round_result, current_round })
     .eq('id', id);
   if (error) console.error('updateRoundAndResult error:', error);
@@ -101,7 +103,7 @@ export async function updateGameState(
   attrs: { status: 'completed'; round_result: string }
 ) {
   const { error } = await supabase
-    .from<GameRecord>('games')
+    .from('games')
     .update(attrs)
     .eq('id', id);
   if (error) console.error('updateGameState error:', error);

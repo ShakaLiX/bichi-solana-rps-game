@@ -1,3 +1,4 @@
+
 // src/contexts/GameContext.tsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
@@ -6,7 +7,6 @@ import { PublicKey } from '@solana/web3.js';
 import { useToast } from '@/hooks/use-toast';
 import supabase from '@/lib/supabase';
 import {
-  recordMove,
   updateRoundAndResult,
   updateGameState
 } from '@/lib/supabase';
@@ -194,7 +194,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode; gameId: string 
     setState(prev => ({ ...prev, phase: 'gameOver', winner: winnerAddr }));
     if (state.isCreator && winnerAddr && publicKey) {
       await updateGameState(state.id, { status: 'completed', round_result: winnerAddr });
-      const tx = createTransferTransaction(ESCROW_PUBKEY, new PublicKey(winnerAddr), state.stake * 2);
+      const tx = await createTransferTransaction(ESCROW_PUBKEY, new PublicKey(winnerAddr), state.stake * 2);
       const sig = await sendTransaction(tx, connection);
       toast({ title: 'Payout', description: sig });
       setTimeout(() => navigate('/'), 5000);
