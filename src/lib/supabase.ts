@@ -3,8 +3,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database } from '@/integrations/supabase/types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL!;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY!;
+// Using hardcoded values since we're getting errors with import.meta.env
+// These should match your Supabase project settings
+const SUPABASE_URL = 'https://uuhdluysciuxzswveaqx.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1aGRsdXlzY2l1eHpzd3ZlYXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDYyMTAwMzUsImV4cCI6MjA2MTc4NjAzNX0.LFa32-oU0cFhlbsANmnS5Y9_3cqT6SnxK4QYLM527tU';
 
 const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY);
 export default supabase;
