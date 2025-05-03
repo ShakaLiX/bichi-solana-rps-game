@@ -1,4 +1,3 @@
-
 // src/lib/supabase.ts
 import { createClient } from '@supabase/supabase-js';
 import { Database } from '@/integrations/supabase/types';
@@ -8,8 +7,7 @@ import { Database } from '@/integrations/supabase/types';
 const SUPABASE_URL = 'https://uuhdluysciuxzswveaqx.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1aGRsdXlzY2l1eHpzd3ZlYXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDYyMTAwMzUsImV4cCI6MjA2MTc4NjAzNX0.LFa32-oU0cFhlbsANmnS5Y9_3cqT6SnxK4QYLM527tU';
 
-const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY);
-export default supabase;
+export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Shape of a game row
 export interface GameRecord {

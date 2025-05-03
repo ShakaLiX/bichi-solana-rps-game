@@ -1,3 +1,4 @@
+
 // src/pages/LobbyPage.tsx
 import React, { useEffect, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -15,6 +16,7 @@ const LobbyPage: React.FC = () => {
   useEffect(() => {
     (async () => {
       const open = await fetchOpenGames();
+      console.log('fetchOpenGames →', open);
       setGames(open);
     })();
   }, []);

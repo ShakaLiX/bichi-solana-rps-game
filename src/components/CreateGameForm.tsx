@@ -7,6 +7,7 @@ import { createTransferTransaction, ESCROW_PUBKEY } from '@/lib/solana';
 import { PublicKey } from '@solana/web3.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
 
 interface Props {
   onCreated: (id: string) => void;
@@ -14,9 +15,10 @@ interface Props {
 
 const CreateGameForm: React.FC<Props> = ({ onCreated }) => {
   const { publicKey, sendTransaction } = useWallet();
-  const { connection } = useConnection(); // Get connection from useConnection hook
+  const { connection } = useConnection();
   const [stake, setStake] = useState<number>(0);
   const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
 
   const handleCreate = async () => {
     if (!publicKey || stake <= 0) return;
@@ -32,12 +34,25 @@ const CreateGameForm: React.FC<Props> = ({ onCreated }) => {
       await connection.confirmTransaction(sig);
 
       // 2️⃣ Record game in Supabase
-      const record = await createGameRecord(publicKey.toString(), stake);
-      if (record) onCreated(record.id);
-      else alert('Failed to create game record');
+      const result = await createGameRecord(publicKey.toString(), stake);
+      console.log('createGameRecord →', result);
+      
+      if (result) {
+        onCreated(result.id);
+      } else {
+        toast({
+          title: "Error creating game",
+          description: "Failed to create game record in database",
+          variant: "destructive"
+        });
+      }
     } catch (err) {
       console.error(err);
-      alert('Error creating game—see console');
+      toast({
+        title: "Error creating game",
+        description: "See console for details",
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
     }
