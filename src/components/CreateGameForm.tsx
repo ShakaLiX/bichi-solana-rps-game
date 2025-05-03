@@ -16,28 +16,49 @@ interface Props {
 const CreateGameForm: React.FC<Props> = ({ onCreated }) => {
   const { publicKey, sendTransaction } = useWallet();
   const { connection } = useConnection();
-  const [stake, setStake] = useState<number>(0);
+  const [stake, setStake] = useState<number>(0.1); // Default to 0.1 SOL to avoid NaN
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   const handleCreate = async () => {
-    if (!publicKey || stake <= 0) return;
+    if (!publicKey || stake <= 0) {
+      toast({
+        title: "Invalid input",
+        description: "Please connect your wallet and enter a valid stake amount",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setLoading(true);
     try {
       // 1️⃣ Send SOL to escrow
       const tx = await createTransferTransaction(
-        ESCROW_PUBKEY,
+        publicKey,
         new PublicKey(ESCROW_PUBKEY),
         stake
       );
+      
+      console.log('Sending transaction:', {
+        from: publicKey.toString(),
+        to: ESCROW_PUBKEY,
+        amount: stake
+      });
+      
       const sig = await sendTransaction(tx, connection);
+      console.log('Transaction sent:', sig);
       await connection.confirmTransaction(sig);
+      console.log('Transaction confirmed!');
 
       // 2️⃣ Record game in Supabase
       const result = await createGameRecord(publicKey.toString(), stake);
       console.log('createGameRecord →', result);
       
       if (result) {
+        toast({
+          title: "Game created!",
+          description: `Game created with ${stake} SOL stake`
+        });
         onCreated(result.id);
       } else {
         toast({
@@ -47,15 +68,20 @@ const CreateGameForm: React.FC<Props> = ({ onCreated }) => {
         });
       }
     } catch (err) {
-      console.error(err);
+      console.error('Game creation error:', err);
       toast({
-        title: "Error creating game",
-        description: "See console for details",
+        title: "Transaction failed",
+        description: err instanceof Error ? err.message : "See console for details",
         variant: "destructive"
       });
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleStakeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseFloat(e.target.value);
+    setStake(isNaN(value) ? 0 : value);
   };
 
   return (
@@ -65,11 +91,11 @@ const CreateGameForm: React.FC<Props> = ({ onCreated }) => {
         min={0.001}
         step={0.001}
         value={stake}
-        onChange={e => setStake(parseFloat(e.target.value))}
+        onChange={handleStakeChange}
         placeholder="Stake (SOL)"
         className="w-32"
       />
-      <Button onClick={handleCreate} disabled={!publicKey || loading}>
+      <Button onClick={handleCreate} disabled={!publicKey || loading || stake <= 0}>
         {loading ? 'Creating…' : 'Create Game'}
       </Button>
     </div>

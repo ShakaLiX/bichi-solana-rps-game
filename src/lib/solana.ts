@@ -13,8 +13,8 @@ export const getEndpoint = (network = WalletAdapterNetwork.Devnet) => {
 export const getConnection = (network = WalletAdapterNetwork.Devnet) => {
   const endpoint = getEndpoint(network);
   console.log(`Connecting to endpoint: ${endpoint}`);
-  // Using 'processed' for quicker updates
-  return new Connection(endpoint, 'processed');
+  // Using 'confirmed' for better reliability
+  return new Connection(endpoint, 'confirmed');
 };
 
 // Get the balance for a public key (in SOL)
@@ -22,8 +22,7 @@ export const getBalance = async (publicKey: PublicKey): Promise<number> => {
   const connection = getConnection();
   try {
     console.log(`Fetching balance for: ${publicKey.toBase58()}`);
-    // Try both commitment levels to make sure we get a balance
-    const balance = await connection.getBalance(publicKey, 'processed');
+    const balance = await connection.getBalance(publicKey, 'confirmed');
     console.log('Raw balance in lamports:', balance);
     return balance / LAMPORTS_PER_SOL;
   } catch (error) {
@@ -38,13 +37,22 @@ export const createTransferTransaction = async (
   toPubkey: PublicKey, 
   amount: number
 ): Promise<Transaction> => {
+  if (isNaN(amount) || amount <= 0) {
+    throw new Error(`Invalid transfer amount: ${amount} SOL`);
+  }
+
   const connection = getConnection();
+  const lamports = Math.round(amount * LAMPORTS_PER_SOL);
+  
+  console.log(`Creating transfer transaction: ${amount} SOL (${lamports} lamports)`);
+  console.log(`From: ${fromPubkey.toBase58()}`);
+  console.log(`To: ${toPubkey.toBase58()}`);
   
   // Create the instruction for transferring SOL
   const transferInstruction = SystemProgram.transfer({
     fromPubkey,
     toPubkey,
-    lamports: Math.round(amount * LAMPORTS_PER_SOL)  // Convert SOL to lamports and ensure it's an integer
+    lamports
   });
   
   // Create a new transaction and add the transfer instruction
