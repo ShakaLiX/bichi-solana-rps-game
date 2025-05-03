@@ -5,7 +5,7 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useNavigate } from 'react-router-dom';
 import { PublicKey } from '@solana/web3.js';
 import { useToast } from '@/hooks/use-toast';
-import supabase from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import {
   updateRoundAndResult,
   updateGameState
