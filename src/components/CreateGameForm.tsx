@@ -1,6 +1,7 @@
+
 // src/components/CreateGameForm.tsx
 import React, { useState } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { createGameRecord } from '@/lib/supabase';
 import { createTransferTransaction, ESCROW_PUBKEY } from '@/lib/solana';
 import { PublicKey } from '@solana/web3.js';
@@ -13,6 +14,7 @@ interface Props {
 
 const CreateGameForm: React.FC<Props> = ({ onCreated }) => {
   const { publicKey, sendTransaction } = useWallet();
+  const { connection } = useConnection(); // Get connection from useConnection hook
   const [stake, setStake] = useState<number>(0);
   const [loading, setLoading] = useState(false);
 

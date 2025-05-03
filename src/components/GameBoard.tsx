@@ -1,10 +1,11 @@
+
 // src/components/GameBoard.tsx
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import Timer from './Timer';
-import GameMove from './GameMove';
+import GameMove, { MoveType } from './GameMove';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useGame } from '@/contexts/GameContext';
 import { shortenAddress } from '@/lib/solana';
@@ -82,7 +83,7 @@ const GameBoard: React.FC = () => {
 
           {phase === 'waitingToCommit' && (
             <div className="grid grid-cols-3 gap-4 mb-4">
-              {(['rock','paper','scissors'] as const).map(move => (
+              {(['rock','paper','scissors'] as MoveType[]).map(move => (
                 <GameMove
                   key={move}
                   moveType={move}

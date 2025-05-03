@@ -2,9 +2,9 @@
 import { ReactNode } from "react";
 import { rock, paper, scissors } from "../lib/gameIcons";
 
-type MoveType = "rock" | "paper" | "scissors";
+export type MoveType = "rock" | "paper" | "scissors";
 
-interface GameMoveProps {
+export interface GameMoveProps {
   moveType: MoveType;
   selected?: boolean;
   onClick?: () => void;
